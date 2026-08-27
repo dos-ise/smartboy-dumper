@@ -1,45 +1,67 @@
 using System;
+using System.Linq;
+using LibUsbDotNet.LibUsb;
 
 namespace SmartboyDumperCs
 {
     internal static class Program
     {
-        private static int Main(string[] args)
+        private static int Main()
         {
-            int vendorId = 0x0000;   // TODO: per lsusb -v ermitteln
-            int productId = 0x0000;  // TODO: per lsusb -v ermitteln
-            bool verbose = false;
+            using var context = new UsbContext();
+            var devices = context.List().ToList();
 
-            for (int i = 0; i < args.Length; i++)
+            if (devices.Count == 0)
             {
-                switch (args[i])
-                {
-                    case "-v":
-                    case "--verbose":
-                        verbose = true;
-                        break;
-                    case "--vid":
-                        vendorId = Convert.ToInt32(args[++i], 16);
-                        break;
-                    case "--pid":
-                        productId = Convert.ToInt32(args[++i], 16);
-                        break;
-                    default:
-                        Console.WriteLine($"Unbekannte Option: {args[i]}");
-                        return 1;
-                }
-            }
-
-            if (vendorId == 0 || productId == 0)
-            {
-                Console.WriteLine("Bitte --vid und --pid angeben, z.B.:");
-                Console.WriteLine("  SmartboyDumperCs --vid 0483 --pid 5740 -v");
+                Console.WriteLine("Keine USB-Geräte gefunden.");
                 return 1;
             }
 
+            Console.WriteLine("Gefundene USB-Geräte:");
+            Console.WriteLine();
+
+            for (int i = 0; i < devices.Count; i++)
+            {
+                var dev = devices[i];
+                string name = "";
+
+                try
+                {
+                    dev.Open();
+                    string? mfg = dev.Info.Manufacturer;
+                    string? prod = dev.Info.Product;
+                    name = string.Join(" ", new[] { mfg, prod }.Where(s => !string.IsNullOrWhiteSpace(s)));
+                }
+                catch
+                {
+                    // manche Geräte lassen sich ohne Rechte/Treiber nicht öffnen - ignorieren
+                }
+                finally
+                {
+                    if (dev.IsOpen)
+                        dev.Close();
+                }
+
+                Console.WriteLine($"  [{i}] {dev.VendorId:X4}:{dev.ProductId:X4}  {name}");
+            }
+
+            Console.WriteLine();
+            Console.Write("Gerät per Nummer auswählen: ");
+            string? input = Console.ReadLine();
+
+            if (!int.TryParse(input, out int index) || index < 0 || index >= devices.Count)
+            {
+                Console.WriteLine("Ungültige Auswahl.");
+                return 1;
+            }
+
+            var selected = devices[index];
+            int vendorId = selected.VendorId;
+            int productId = selected.ProductId;
+
             try
             {
-                using var dumper = new SmartboyDumper(vendorId, productId) { Verbose = verbose };
+                using var dumper = new SmartboyDumper(vendorId, productId) { Verbose = true };
                 Console.WriteLine($"*** Gerät {vendorId:X4}:{productId:X4} geöffnet");
                 dumper.Run();
             }
