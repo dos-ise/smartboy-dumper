@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Ports;
 using System.Text;
-using LibUsbDotNet;
-using LibUsbDotNet.LibUsb;
-using LibUsbDotNet.Main;
 
 namespace SmartboyDumperCs
 {
@@ -26,8 +24,8 @@ namespace SmartboyDumperCs
 
     /// <summary>
     /// Portierung von smartboy-dumper (Bastien Nocera, GPLv3) nach C#.
-    /// Statt GIOChannel/tty wird hier direkt über LibUsbDotNet mit den
-    /// USB-Bulk-Endpoints des Geräts kommuniziert.
+    /// Das Original spricht das Gerät als CDC-ACM (virtueller serieller Port,
+    /// /dev/ttyACM0 unter Linux) an - hier daher SerialPort statt USB-Bulk.
     /// </summary>
     public class SmartboyDumper : IDisposable
     {
@@ -54,16 +52,7 @@ namespace SmartboyDumperCs
         };
         private const int GbMagicOffset = 260;
 
-        private readonly UsbContext _context;
-        private readonly UsbDevice _device;
-        private readonly UsbEndpointReader _reader;
-        private readonly UsbEndpointWriter _writer;
-
-        // Byte-Ringpuffer für die USB-Bulk-Reads, damit wir dem Original
-        // (das byteweise vom tty liest) treu bleiben können, ohne für
-        // jedes einzelne Byte einen eigenen USB-Transfer zu machen.
-        private readonly Queue<byte> _rxBuffer = new Queue<byte>();
-        private readonly byte[] _usbReadBuf = new byte[64];
+        private readonly SerialPort _port;
 
         private InState _state = InState.None;
         private int _tagPos = 0;
@@ -75,53 +64,58 @@ namespace SmartboyDumperCs
 
         public bool Verbose { get; set; }
 
-        /// <param name="vendorId">USB Vendor-ID des Smartboy-Adapters</param>
-        /// <param name="productId">USB Product-ID des Smartboy-Adapters</param>
-        /// <param name="readEndpoint">Bulk-IN-Endpoint (per lsusb -v ermitteln)</param>
-        /// <param name="writeEndpoint">Bulk-OUT-Endpoint (per lsusb -v ermitteln)</param>
-        public SmartboyDumper(int vendorId, int productId,
-                               ReadEndpointID readEndpoint = ReadEndpointID.Ep01,
-                               WriteEndpointID writeEndpoint = WriteEndpointID.Ep01)
+        /// <param name="portName">COM-Port des Smartboy-Adapters, z. B. "COM5"</param>
+        /// <param name="baudRate">Baudrate der virtuellen seriellen Schnittstelle</param>
+        public SmartboyDumper(string portName, int baudRate = 115200)
         {
-            _context = new UsbContext();
+            _port = new SerialPort(portName, baudRate)
+            {
+                ReadTimeout = 1000,
+                WriteTimeout = 1000,
+                DtrEnable = true,   // manche CDC-ACM-Geräte brauchen DTR, um Daten zu senden
+                RtsEnable = true
+            };
 
-            var finder = new UsbDeviceFinder { Vid = vendorId, Pid = productId };
-            _device = _context.Find(finder) as UsbDevice;
-
-            if (_device == null)
-                throw new SmartboyException($"Gerät {vendorId:X4}:{productId:X4} nicht gefunden");
-
-            _device.Open();
-            _device.SetConfiguration(1);
-            _device.ClaimInterface(0);
-
-            _reader = _device.OpenEndpointReader(readEndpoint);
-            _writer = _device.OpenEndpointWriter(writeEndpoint);
+            try
+            {
+                _port.Open();
+            }
+            catch (Exception ex)
+            {
+                throw new SmartboyException($"Konnte {portName} nicht öffnen: {ex.Message}");
+            }
         }
 
         // --- Low-Level I/O -----------------------------------------------
 
         private byte ReadByte()
         {
-            while (_rxBuffer.Count == 0)
+            while (true)
             {
-                var status = _reader.Read(_usbReadBuf, 1000, out int bytesRead);
-                if (status != Error.Success && status != Error.Timeout)
-                    throw new SmartboyException($"USB-Lesefehler: {status}");
-
-                for (int i = 0; i < bytesRead; i++)
-                    _rxBuffer.Enqueue(_usbReadBuf[i]);
+                try
+                {
+                    int b = _port.ReadByte();
+                    if (b >= 0)
+                        return (byte)b;
+                }
+                catch (TimeoutException)
+                {
+                    // wie im Original: einfach weiter versuchen
+                }
             }
-
-            return _rxBuffer.Dequeue();
         }
 
         private void WriteString(string s)
         {
-            var bytes = Encoding.ASCII.GetBytes(s);
-            var status = _writer.Write(bytes, 1000, out _);
-            if (status != Error.Success)
-                throw new SmartboyException($"USB-Schreibfehler: {status}");
+            try
+            {
+                var bytes = Encoding.ASCII.GetBytes(s);
+                _port.Write(bytes, 0, bytes.Length);
+            }
+            catch (Exception ex)
+            {
+                throw new SmartboyException($"Schreibfehler: {ex.Message}");
+            }
         }
 
         // --- Tag-Erkennung (entspricht suffix_get_tag / prefix_get_tag) --
@@ -365,18 +359,10 @@ namespace SmartboyDumperCs
 
         public void Dispose()
         {
-            if (_device != null)
-            {
-                if (_device.IsOpen)
-                {
-                    _device.ReleaseInterface(0);
-                    _device.Close();
-                }
+            if (_port != null && _port.IsOpen)
+                _port.Close();
 
-                _device.Dispose();
-            }
-
-            _context?.Dispose();
+            _port?.Dispose();
         }
     }
 }

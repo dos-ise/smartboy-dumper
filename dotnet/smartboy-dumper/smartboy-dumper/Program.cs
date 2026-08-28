@@ -1,6 +1,6 @@
 using System;
+using System.IO.Ports;
 using System.Linq;
-using LibUsbDotNet.LibUsb;
 
 namespace SmartboyDumperCs
 {
@@ -8,61 +8,38 @@ namespace SmartboyDumperCs
     {
         private static int Main()
         {
-            using var context = new UsbContext();
-            var devices = context.List().ToList();
+            var ports = SerialPort.GetPortNames()
+                .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
-            if (devices.Count == 0)
+            if (ports.Count == 0)
             {
-                Console.WriteLine("Keine USB-Geräte gefunden.");
+                Console.WriteLine("Keine COM-Ports gefunden.");
                 return 1;
             }
 
-            Console.WriteLine("Gefundene USB-Geräte:");
+            Console.WriteLine("Gefundene COM-Ports:");
             Console.WriteLine();
 
-            for (int i = 0; i < devices.Count; i++)
-            {
-                var dev = devices[i];
-                string name = "";
-
-                try
-                {
-                    dev.Open();
-                    string? mfg = dev.Info.Manufacturer;
-                    string? prod = dev.Info.Product;
-                    name = string.Join(" ", new[] { mfg, prod }.Where(s => !string.IsNullOrWhiteSpace(s)));
-                }
-                catch
-                {
-                    // manche Geräte lassen sich ohne Rechte/Treiber nicht öffnen - ignorieren
-                }
-                finally
-                {
-                    if (dev.IsOpen)
-                        dev.Close();
-                }
-
-                Console.WriteLine($"  [{i}] {dev.VendorId:X4}:{dev.ProductId:X4}  {name}");
-            }
+            for (int i = 0; i < ports.Count; i++)
+                Console.WriteLine($"  [{i}] {ports[i]}");
 
             Console.WriteLine();
-            Console.Write("Gerät per Nummer auswählen: ");
+            Console.Write("Port per Nummer auswählen: ");
             string? input = Console.ReadLine();
 
-            if (!int.TryParse(input, out int index) || index < 0 || index >= devices.Count)
+            if (!int.TryParse(input, out int index) || index < 0 || index >= ports.Count)
             {
                 Console.WriteLine("Ungültige Auswahl.");
                 return 1;
             }
 
-            var selected = devices[index];
-            int vendorId = selected.VendorId;
-            int productId = selected.ProductId;
+            string portName = ports[index];
 
             try
             {
-                using var dumper = new SmartboyDumper(vendorId, productId) { Verbose = true };
-                Console.WriteLine($"*** Gerät {vendorId:X4}:{productId:X4} geöffnet");
+                using var dumper = new SmartboyDumper(portName) { Verbose = true };
+                Console.WriteLine($"*** Port {portName} geöffnet");
                 dumper.Run();
             }
             catch (SmartboyException ex)
