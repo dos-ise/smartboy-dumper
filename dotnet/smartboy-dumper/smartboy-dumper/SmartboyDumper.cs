@@ -54,6 +54,13 @@ namespace SmartboyDumperCs
 
         private readonly SerialPort _port;
 
+        // Byte-Ringpuffer für gepuffertes Lesen: statt jedes Byte einzeln
+        // per _port.ReadByte() zu holen (teuer, kann bei kurzen Stalls -
+        // z.B. durch Console.Write - zu Datenverlust am USB-Treiber führen),
+        // wird blockweise in _readChunk gelesen und von hier serviert.
+        private readonly Queue<byte> _rxBuffer = new Queue<byte>();
+        private readonly byte[] _readChunk = new byte[4096];
+
         private InState _state = InState.None;
         private int _tagPos = 0;
         private bool _romReq;
@@ -64,6 +71,13 @@ namespace SmartboyDumperCs
 
         public bool Verbose { get; set; }
 
+        /// <summary>
+        /// Wenn true, wird jedes empfangene Byte roh als Hex + ASCII auf der
+        /// Konsole ausgegeben, bevor es in die State Machine geht. Praktisch
+        /// zum Debuggen, wenn unklar ist, was das Gerät tatsächlich sendet.
+        /// </summary>
+        public bool DumpRawBytes { get; set; }
+
         /// <param name="portName">COM-Port des Smartboy-Adapters, z. B. "COM5"</param>
         /// <param name="baudRate">Baudrate der virtuellen seriellen Schnittstelle</param>
         public SmartboyDumper(string portName, int baudRate = 115200)
@@ -73,7 +87,8 @@ namespace SmartboyDumperCs
                 ReadTimeout = 1000,
                 WriteTimeout = 1000,
                 DtrEnable = true,   // manche CDC-ACM-Geräte brauchen DTR, um Daten zu senden
-                RtsEnable = true
+                RtsEnable = true,
+                ReadBufferSize = 65536 // großzügiger Reservepuffer gegen Überlauf
             };
 
             try
@@ -90,19 +105,31 @@ namespace SmartboyDumperCs
 
         private byte ReadByte()
         {
-            while (true)
+            while (_rxBuffer.Count == 0)
             {
+                int bytesRead;
                 try
                 {
-                    int b = _port.ReadByte();
-                    if (b >= 0)
-                        return (byte)b;
+                    bytesRead = _port.Read(_readChunk, 0, _readChunk.Length);
                 }
                 catch (TimeoutException)
                 {
-                    // wie im Original: einfach weiter versuchen
+                    continue;
                 }
+
+                for (int i = 0; i < bytesRead; i++)
+                    _rxBuffer.Enqueue(_readChunk[i]);
             }
+
+            byte b = _rxBuffer.Dequeue();
+
+            if (DumpRawBytes)
+            {
+                char c = (b >= 0x20 && b < 0x7F) ? (char)b : '.';
+                Console.WriteLine($"RX 0x{b:X2}  ({c})");
+            }
+
+            return b;
         }
 
         private void WriteString(string s)
@@ -116,6 +143,48 @@ namespace SmartboyDumperCs
             {
                 throw new SmartboyException($"Schreibfehler: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Reine Diagnosefunktion: liest fortlaufend Rohbytes vom Port und
+        /// gibt sie als Hex-Dump aus, ohne die State Machine zu durchlaufen.
+        /// Mit Strg+C oder Prozessabbruch beenden.
+        /// </summary>
+        public void DumpRawStream()
+        {
+            Console.WriteLine("*** Roh-Debug-Modus: gebe alle empfangenen Bytes als Hex-Dump aus");
+            Console.WriteLine("*** (Strg+C zum Beenden)");
+            Console.WriteLine();
+
+            var lineBuf = new List<byte>();
+            int column = 0;
+
+            while (true)
+            {
+                byte b = ReadByte();
+
+                lineBuf.Add(b);
+                Console.Write($"{b:X2} ");
+                column++;
+
+                if (column == 16)
+                {
+                    PrintAsciiTail(lineBuf);
+                    lineBuf.Clear();
+                    column = 0;
+                }
+            }
+        }
+
+        private static void PrintAsciiTail(List<byte> bytes)
+        {
+            Console.Write(" | ");
+            foreach (var b in bytes)
+            {
+                char c = (b >= 0x20 && b < 0x7F) ? (char)b : '.';
+                Console.Write(c);
+            }
+            Console.WriteLine();
         }
 
         // --- Tag-Erkennung (entspricht suffix_get_tag / prefix_get_tag) --
@@ -278,6 +347,16 @@ namespace SmartboyDumperCs
                         case InState.Rb:
                             _state = ReadSizeUntilNewState();
                             break;
+                        case InState.Srm:
+                        case InState.End:
+                            // Werden vom Gerät im Hintergrund-Chatter ebenfalls gesendet
+                            // (z. B. SRAM-Infos bei Cartridges mit Save-Batterie) - für uns
+                            // nicht relevant, einfach ignorieren und auf nächsten Tag warten.
+                            if (Verbose)
+                                Console.WriteLine($"Zustand {Tags[(int)_state]} ignoriert, warte auf nächsten Tag");
+                            _state = InState.None;
+                            _tagPos = 0;
+                            break;
                         case InState.Nr:
                             _romName = null;
                             _nrBanks = -1;
@@ -305,7 +384,7 @@ namespace SmartboyDumperCs
                         if (b == (byte)Tags[i][0])
                         {
                             _state = (InState)i;
-                            _tagPos = 0;
+                            _tagPos = 1;   // erstes Zeichen wurde bereits erkannt
                             if (Verbose)
                                 Console.WriteLine($"Möglicher neuer Zustand {Tags[i]}");
                             break;

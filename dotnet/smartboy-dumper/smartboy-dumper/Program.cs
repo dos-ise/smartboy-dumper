@@ -35,12 +35,17 @@ namespace SmartboyDumperCs
             }
 
             string portName = ports[index];
+            bool rawMode = false;
 
             try
             {
-                using var dumper = new SmartboyDumper(portName) { Verbose = true };
+                using var dumper = new SmartboyDumper(portName) { Verbose = false };
                 Console.WriteLine($"*** Port {portName} geöffnet");
-                dumper.Run();
+
+                if (rawMode)
+                    dumper.DumpRawStream();
+                else
+                    dumper.Run();
             }
             catch (SmartboyException ex)
             {
