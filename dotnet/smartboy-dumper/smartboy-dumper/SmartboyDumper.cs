@@ -347,16 +347,6 @@ namespace SmartboyDumperCs
                         case InState.Rb:
                             _state = ReadSizeUntilNewState();
                             break;
-                        case InState.Srm:
-                        case InState.End:
-                            // Werden vom Gerät im Hintergrund-Chatter ebenfalls gesendet
-                            // (z. B. SRAM-Infos bei Cartridges mit Save-Batterie) - für uns
-                            // nicht relevant, einfach ignorieren und auf nächsten Tag warten.
-                            if (Verbose)
-                                Console.WriteLine($"Zustand {Tags[(int)_state]} ignoriert, warte auf nächsten Tag");
-                            _state = InState.None;
-                            _tagPos = 0;
-                            break;
                         case InState.Nr:
                             _romName = null;
                             _nrBanks = -1;
@@ -368,7 +358,15 @@ namespace SmartboyDumperCs
                             }
                             break;
                         default:
-                            throw new SmartboyException($"Unerwarteter Zustand {_state}");
+                            // Srm/End/StartRom außerhalb des erwarteten Moments gehören zum
+                            // autonomen Chatter des Geräts oder treten auf, weil wir mitten
+                            // im laufenden Zyklus mitlesen - einfach ignorieren und auf den
+                            // nächsten bekannten Tag warten, statt abzustürzen.
+                            if (Verbose)
+                                Console.WriteLine($"Zustand {Tags[(int)_state]} außerhalb des erwarteten Ablaufs ignoriert");
+                            _state = InState.None;
+                            _tagPos = 0;
+                            break;
                     }
 
                     if (_state != InState.Nr)

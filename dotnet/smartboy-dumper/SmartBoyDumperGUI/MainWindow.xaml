@@ -1,0 +1,48 @@
+﻿<Window x:Class="SmartBoyDumperGUI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:SmartBoyDumperGUI"
+        mc:Ignorable="d"
+        Title="Smartboy Dumper" Height="500" Width="700">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Port-Auswahl -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+            <TextBlock Text="COM-Port:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <ComboBox x:Name="PortComboBox" Width="150" VerticalAlignment="Center"/>
+            <Button x:Name="RefreshButton" Content="Aktualisieren" Margin="8,0,0,0"
+                    Padding="8,2" Click="RefreshButton_Click"/>
+            <CheckBox x:Name="VerboseCheckBox" Content="Verbose" VerticalAlignment="Center" Margin="20,0,0,0"/>
+        </StackPanel>
+
+        <!-- Start-Button -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+            <Button x:Name="StartButton" Content="Dump starten" Padding="12,4"
+                    Click="StartButton_Click"/>
+            <TextBlock x:Name="StatusText" Text="Bereit." VerticalAlignment="Center" Margin="15,0,0,0"/>
+        </StackPanel>
+
+        <!-- Log-Ausgabe -->
+        <TextBox x:Name="LogTextBox" Grid.Row="2"
+                 IsReadOnly="True"
+                 VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Auto"
+                 FontFamily="Consolas"
+                 FontSize="13"
+                 TextWrapping="NoWrap"
+                 Background="#1e1e1e"
+                 Foreground="#dcdcdc"/>
+
+        <!-- Fußzeile -->
+        <TextBlock Grid.Row="3" Margin="0,8,0,0" Foreground="Gray" FontSize="11"
+                   Text="Cartridge einlegen und 'Dump starten' klicken. Die ROM-Datei wird im Programmverzeichnis gespeichert."/>
+    </Grid>
+</Window>
