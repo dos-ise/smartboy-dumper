@@ -1,4 +1,5 @@
 <Solution>
   <Project Path="smartboy-dumper/smartboy-dumper.csproj" />
   <Project Path="SmartBoyDumperGUI/SmartBoyDumperGUI.csproj" Id="889c1416-a84e-490b-b419-09dc9eee8451" />
+  <Project Path="SmartBoyDumperMAUI/SmartBoyDumperMAUI.csproj" />
 </Solution>
