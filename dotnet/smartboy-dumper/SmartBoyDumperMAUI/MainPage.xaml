@@ -31,19 +31,30 @@
                 <Setter Property="CornerRadius" Value="14" />
                 <Setter Property="HeightRequest" Value="52" />
             </Style>
+
+            <Style x:Key="SecondaryButtonStyle" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="Transparent" />
+                <Setter Property="TextColor" Value="{StaticResource PrimaryColor}" />
+                <Setter Property="FontAttributes" Value="Bold" />
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="BorderColor" Value="{StaticResource PrimaryColor}" />
+                <Setter Property="BorderWidth" Value="1.5" />
+                <Setter Property="CornerRadius" Value="12" />
+                <Setter Property="HeightRequest" Value="44" />
+            </Style>
         </ResourceDictionary>
     </ContentPage.Resources>
 
-    <!-- Kein ScrollView mehr - alles muss ohne Scrollen in den oberen
-         sichtbaren Bereich passen, da der Adapter unten am Gerät hängt
-         und die untere Bildschirmhälfte physisch verdeckt. -->
+    <!-- No ScrollView - everything must fit in the upper visible area
+         without scrolling, since the adapter hangs below the device
+         and physically covers the lower half of the screen. -->
     <VerticalStackLayout Padding="20,16" Spacing="12" VerticalOptions="Start">
 
         <Label Text="GB Cartridge Dumper"
                FontSize="20" FontAttributes="Bold"
                TextColor="{StaticResource TextPrimary}" />
 
-        <!-- Status-Karte: kompakt, alles Wichtige auf einen Blick -->
+        <!-- Status card: compact, everything important at a glance -->
         <Border Style="{StaticResource CardStyle}">
             <VerticalStackLayout Spacing="10">
 
@@ -56,9 +67,9 @@
                     </Border>
 
                     <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
-                        <Label x:Name="StatusTitle" Text="Bereit" FontSize="16"
+                        <Label x:Name="StatusTitle" Text="Ready" FontSize="16"
                                FontAttributes="Bold" TextColor="{StaticResource TextPrimary}" />
-                        <Label x:Name="StatusSubtitle" Text="Adapter anschließen und starten."
+                        <Label x:Name="StatusSubtitle" Text="Connect the adapter and start."
                                FontSize="12" TextColor="{StaticResource TextSecondary}" />
                     </VerticalStackLayout>
                 </Grid>
@@ -75,11 +86,14 @@
                     <Label x:Name="ResultPathLabel" FontSize="11"
                            TextColor="{StaticResource TextSecondary}"
                            LineBreakMode="MiddleTruncation" />
+                    <Button x:Name="SaveAsButton" Text="Save As..."
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Clicked="SaveAsButton_Clicked" />
                 </VerticalStackLayout>
             </VerticalStackLayout>
         </Border>
 
-        <Button x:Name="ActionButton" Text="Dump starten"
+        <Button x:Name="ActionButton" Text="Start Dump"
                 Style="{StaticResource PrimaryButtonStyle}"
                 Clicked="ActionButton_Clicked" />
 
@@ -89,8 +103,8 @@
                    LineBreakMode="WordWrap" />
         </Border>
 
-        <!-- Temporär für Diagnose ohne Kabel - später entfernen -->
-        <Button Text="Letzten Fehler anzeigen" FontSize="12" HeightRequest="36"
+        <!-- Temporary for diagnostics without a cable - remove later -->
+        <Button Text="Show Last Crash" FontSize="12" HeightRequest="36"
                 BackgroundColor="Transparent" TextColor="{StaticResource TextSecondary}"
                 Clicked="ShowLastCrash_Clicked" />
 

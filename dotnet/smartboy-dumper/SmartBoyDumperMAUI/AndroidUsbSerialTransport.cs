@@ -12,7 +12,7 @@ namespace SmartBoyDumperMAUI
         private readonly Queue<byte> _rx = new();
         private readonly byte[] _chunk = new byte[4096];
 
-        public AndroidUsbSerialTransport(UsbManager manager)
+        public AndroidUsbSerialTransport(UsbManager manager, UsbDevice d)
         {
             UsbDevice? found = null;
 

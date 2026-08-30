@@ -1,9 +1,5 @@
-﻿using System;
-using System.IO;
-using System.Threading.Tasks;
-using Android.Content;
+﻿using Android.Content;
 using Android.Hardware.Usb;
-using Microsoft.Maui.Storage;
 using SmartBoyDumperMAUI.Platforms.Android;
 
 namespace SmartBoyDumperMAUI
@@ -41,7 +37,7 @@ namespace SmartBoyDumperMAUI
 
             if (device == null)
             {
-                ShowError("Kein Smartboy-Adapter gefunden oder Zugriff verweigert.");
+                ShowError("No Smartboy adapter found, or access was denied.");
                 return;
             }
 
@@ -73,8 +69,11 @@ namespace SmartBoyDumperMAUI
             _dumper.DumpProgressChanged += (_, percent) => MainThread.BeginInvokeOnMainThread(() =>
                 UpdateProgress(percent));
 
-            _dumper.DumpCompleted += (_, path) => MainThread.BeginInvokeOnMainThread(() =>
-                SetState(UiState.Success, filePath: path));
+            _dumper.DumpCompleted += (_, path) => MainThread.BeginInvokeOnMainThread(async () =>
+            {
+                SetState(UiState.Success, filePath: path);
+                await PromptSaveAsAsync(path);
+            });
 
             SetState(UiState.Running);
 
@@ -88,7 +87,7 @@ namespace SmartBoyDumperMAUI
             }
             catch (Exception ex)
             {
-                MainThread.BeginInvokeOnMainThread(() => ShowError($"Unerwartet: {ex.GetType().Name}: {ex.Message}"));
+                MainThread.BeginInvokeOnMainThread(() => ShowError($"Unexpected error: {ex.GetType().Name}: {ex.Message}"));
             }
         }
 
@@ -100,63 +99,63 @@ namespace SmartBoyDumperMAUI
             {
                 case UiState.Idle:
                     StatusIcon.Text = "🎮";
-                    StatusTitle.Text = "Bereit";
-                    StatusSubtitle.Text = "Adapter anschließen und starten.";
-                    ActionButton.Text = "Dump starten";
-                    //ActionButton.BackgroundColor = (Color)Application.Current!.Resources["PrimaryColor"];
+                    StatusTitle.Text = "Ready";
+                    StatusSubtitle.Text = "Connect the adapter and start.";
+                    ActionButton.Text = "Start Dump";
+                    ActionButton.BackgroundColor = (Color)Resources["PrimaryColor"];
                     ProgressSection.IsVisible = false;
                     ResultSection.IsVisible = false;
                     break;
 
                 case UiState.Running:
                     StatusIcon.Text = "🔌";
-                    StatusTitle.Text = "Verbunden";
-                    StatusSubtitle.Text = "Warte auf Statusmeldung des Geräts...";
-                    ActionButton.Text = "Abbrechen";
+                    StatusTitle.Text = "Connected";
+                    StatusSubtitle.Text = "Waiting for device status...";
+                    ActionButton.Text = "Cancel";
                     ActionButton.BackgroundColor = Colors.Gray;
                     break;
 
                 case UiState.WaitingForCartridge:
                     StatusIcon.Text = "📥";
-                    StatusTitle.Text = "Bereit zum Einlesen";
-                    StatusSubtitle.Text = "Bitte eine Cartridge einlegen.";
-                    ActionButton.Text = "Abbrechen";
+                    StatusTitle.Text = "Ready to Read";
+                    StatusSubtitle.Text = "Please insert a cartridge.";
+                    ActionButton.Text = "Cancel";
                     break;
 
                 case UiState.CartridgeDetected:
                     StatusIcon.Text = "🧩";
-                    StatusTitle.Text = romName ?? "Cartridge erkannt";
-                    StatusSubtitle.Text = "Ermittle ROM-Größe...";
-                    ActionButton.Text = "Abbrechen";
+                    StatusTitle.Text = romName ?? "Cartridge Detected";
+                    StatusSubtitle.Text = "Determining ROM size...";
+                    ActionButton.Text = "Cancel";
                     break;
 
                 case UiState.Dumping:
                     StatusIcon.Text = "💾";
-                    StatusTitle.Text = "Lese Cartridge aus";
-                    StatusSubtitle.Text = $"{romSizeBytes / 1024} KB werden übertragen";
+                    StatusTitle.Text = "Reading Cartridge";
+                    StatusSubtitle.Text = $"Transferring {romSizeBytes / 1024} KB";
                     ProgressSection.IsVisible = true;
                     DumpProgressBar.Progress = 0;
                     ProgressLabel.Text = "0%";
-                    ActionButton.Text = "Abbrechen";
+                    ActionButton.Text = "Cancel";
                     break;
 
                 case UiState.Success:
                     _lastResultPath = filePath;
                     StatusIcon.Text = "✅";
-                    StatusTitle.Text = "Fertig!";
-                    StatusSubtitle.Text = "Die ROM-Datei wurde erfolgreich gespeichert.";
+                    StatusTitle.Text = "Done!";
+                    StatusSubtitle.Text = "The ROM file has been saved successfully.";
                     ProgressSection.IsVisible = false;
                     ResultSection.IsVisible = true;
                     ResultPathLabel.Text = filePath;
-                    ActionButton.Text = "Neuer Dump";
-                    //ActionButton.BackgroundColor = (Color)Application.Current!.Resources["PrimaryColor"];
+                    ActionButton.Text = "New Dump";
+                    ActionButton.BackgroundColor = (Color)Resources["PrimaryColor"];
                     _dumper?.Dispose();
                     _dumper = null;
                     break;
 
                 case UiState.Error:
-                    ActionButton.Text = "Erneut versuchen";
-                    //ActionButton.BackgroundColor = (Color)Application.Current!.Resources["PrimaryColor"];
+                    ActionButton.Text = "Try Again";
+                    ActionButton.BackgroundColor = (Color)Resources["PrimaryColor"];
                     _dumper?.Dispose();
                     _dumper = null;
                     break;
@@ -176,27 +175,44 @@ namespace SmartBoyDumperMAUI
             SetState(UiState.Error);
         }
 
-        private async void OpenFileButton_Clicked(object sender, EventArgs e)
+        private async void SaveAsButton_Clicked(object sender, EventArgs e)
         {
-            if (string.IsNullOrEmpty(_lastResultPath) || !File.Exists(_lastResultPath))
+            await PromptSaveAsAsync(_lastResultPath);
+        }
+
+        private async Task PromptSaveAsAsync(string? sourcePath)
+        {
+            if (string.IsNullOrEmpty(sourcePath) || !File.Exists(sourcePath))
                 return;
 
             try
             {
-                await Launcher.Default.OpenAsync(new OpenFileRequest(
-                    "ROM-Datei", new ReadOnlyFile(_lastResultPath)));
+                //using var stream = File.OpenRead(sourcePath);
+                //var fileName = Path.GetFileName(sourcePath);
+
+                //var result = await FileSaver.Default.SaveAsync(fileName, stream, CancellationToken.None);
+
+                //if (result.IsSuccessful)
+                //{
+                //    await DisplayAlert("Saved", $"File saved to:\n{result.FilePath}", "OK");
+                //}
+                //else if (result.Exception != null)
+                //{
+                //    ShowError($"Save failed: {result.Exception.Message}");
+                //}
+                // User cancelled the picker - not an error, do nothing.
             }
             catch (Exception ex)
             {
-                ShowError($"Konnte Datei nicht öffnen: {ex.Message}");
+                ShowError($"Save failed: {ex.Message}");
             }
         }
 
         private async void ShowLastCrash_Clicked(object sender, EventArgs e)
         {
             var path = Path.Combine(FileSystem.Current.AppDataDirectory, "crash.txt");
-            var text = File.Exists(path) ? File.ReadAllText(path) : "Kein Crash-Log vorhanden.";
-            await DisplayAlert("Letzter Crash", text, "OK");
+            var text = File.Exists(path) ? File.ReadAllText(path) : "No crash log available.";
+            await DisplayAlert("Last Crash", text, "OK");
         }
 
         protected override void OnDisappearing()
