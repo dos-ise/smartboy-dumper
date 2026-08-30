@@ -1,23 +1,23 @@
 <svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
-  <!-- Hintergrund -->
+  <!-- Background -->
   <rect x="0" y="0" width="128" height="128" rx="28" fill="#3A6FF7"/>
 
-  <!-- Cartridge-Slot oben -->
-  <rect x="50" y="12" width="28" height="22" rx="4" fill="#FFFFFF"/>
-  <rect x="58" y="18" width="12" height="10" rx="2" fill="#3A6FF7"/>
+  <!-- Cartridge slot -->
+  <rect x="57.17" y="36.70" width="13.65" height="11.38" rx="2.27" fill="#FFFFFF"/>
+  <rect x="61.16" y="39.54" width="5.68" height="5.68" rx="1.13" fill="#3A6FF7"/>
 
-  <!-- Gehäuse -->
-  <rect x="26" y="28" width="76" height="90" rx="16" fill="#FFFFFF"/>
+  <!-- Body -->
+  <rect x="44.67" y="44.67" width="38.67" height="46.63" rx="7.97" fill="#FFFFFF"/>
 
-  <!-- Bildschirm -->
-  <rect x="40" y="41" width="48" height="28" rx="4" fill="#1A1D29"/>
-  <rect x="44" y="45" width="22" height="11" rx="2" fill="#3A6FF7" opacity="0.6"/>
+  <!-- Screen -->
+  <rect x="51.48" y="51.48" width="25.02" height="14.78" rx="2.27" fill="#1A1D29"/>
+  <rect x="53.77" y="53.77" width="11.38" height="5.68" rx="1.13" fill="#3A6FF7" opacity="0.55"/>
 
   <!-- D-Pad -->
-  <rect x="37" y="82" width="10" height="26" rx="3" fill="#1A1D29"/>
-  <rect x="28" y="91" width="26" height="10" rx="3" fill="#1A1D29"/>
+  <rect x="50.35" y="73.10" width="5.12" height="13.65" rx="1.42" fill="#1A1D29"/>
+  <rect x="46.09" y="77.36" width="13.65" height="5.12" rx="1.42" fill="#1A1D29"/>
 
   <!-- A/B Buttons -->
-  <circle cx="83" cy="88" r="6.5" fill="#1A1D29"/>
-  <circle cx="94" cy="97" r="6.5" fill="#1A1D29"/>
+  <circle cx="72.53" cy="76.52" r="3.42" fill="#1A1D29"/>
+  <circle cx="78.22" cy="81.07" r="3.42" fill="#1A1D29"/>
 </svg>

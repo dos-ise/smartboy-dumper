@@ -50,9 +50,14 @@
          and physically covers the lower half of the screen. -->
     <VerticalStackLayout Padding="20,16" Spacing="12" VerticalOptions="Start">
 
-        <Label Text="GB Cartridge Dumper"
-               FontSize="20" FontAttributes="Bold"
-               TextColor="{StaticResource TextPrimary}" />
+        <VerticalStackLayout Spacing="0">
+            <Label Text="Smartboy Companion"
+                   FontSize="20" FontAttributes="Bold"
+                   TextColor="{StaticResource TextPrimary}" />
+            <Label Text="Game Boy Cartridge Backup"
+                   FontSize="12"
+                   TextColor="{StaticResource TextSecondary}" />
+        </VerticalStackLayout>
 
         <!-- Status card: compact, everything important at a glance -->
         <Border Style="{StaticResource CardStyle}">
@@ -86,7 +91,7 @@
                     <Label x:Name="ResultPathLabel" FontSize="11"
                            TextColor="{StaticResource TextSecondary}"
                            LineBreakMode="MiddleTruncation" />
-                    <Button x:Name="SaveAsButton" Text="Save As..."
+                    <Button x:Name="SaveAsButton" Text="Save to Downloads"
                             Style="{StaticResource SecondaryButtonStyle}"
                             Clicked="SaveAsButton_Clicked" />
                 </VerticalStackLayout>

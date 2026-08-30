@@ -1,5 +1,6 @@
 ﻿using Android.Content;
 using Android.Hardware.Usb;
+using CommunityToolkit.Maui.Storage;
 using SmartBoyDumperMAUI.Platforms.Android;
 
 namespace SmartBoyDumperMAUI
@@ -72,7 +73,7 @@ namespace SmartBoyDumperMAUI
             _dumper.DumpCompleted += (_, path) => MainThread.BeginInvokeOnMainThread(async () =>
             {
                 SetState(UiState.Success, filePath: path);
-                await PromptSaveAsAsync(path);
+                await SaveToDownloadsAsync(path);
             });
 
             SetState(UiState.Running);
@@ -113,6 +114,8 @@ namespace SmartBoyDumperMAUI
                     StatusSubtitle.Text = "Waiting for device status...";
                     ActionButton.Text = "Cancel";
                     ActionButton.BackgroundColor = Colors.Gray;
+                    SaveAsButton.IsEnabled = true;      // <- neu
+                    SaveAsButton.Text = "Save to Downloads";  // <- neu
                     break;
 
                 case UiState.WaitingForCartridge:
@@ -177,34 +180,29 @@ namespace SmartBoyDumperMAUI
 
         private async void SaveAsButton_Clicked(object sender, EventArgs e)
         {
-            await PromptSaveAsAsync(_lastResultPath);
+            await SaveToDownloadsAsync(_lastResultPath);
         }
 
-        private async Task PromptSaveAsAsync(string? sourcePath)
+        private async Task SaveToDownloadsAsync(string? sourcePath)
         {
             if (string.IsNullOrEmpty(sourcePath) || !File.Exists(sourcePath))
                 return;
 
+            SaveAsButton.IsEnabled = false;
+
             try
             {
-                //using var stream = File.OpenRead(sourcePath);
-                //var fileName = Path.GetFileName(sourcePath);
+                var context = global::Android.App.Application.Context;
+                var displayPath = await Task.Run(() =>
+                    DownloadsSaver.SaveToDownloads(context, sourcePath));
 
-                //var result = await FileSaver.Default.SaveAsync(fileName, stream, CancellationToken.None);
-
-                //if (result.IsSuccessful)
-                //{
-                //    await DisplayAlert("Saved", $"File saved to:\n{result.FilePath}", "OK");
-                //}
-                //else if (result.Exception != null)
-                //{
-                //    ShowError($"Save failed: {result.Exception.Message}");
-                //}
-                // User cancelled the picker - not an error, do nothing.
+                ResultPathLabel.Text = $"Saved to {displayPath}";
+                SaveAsButton.Text = "Saved ✓";
             }
             catch (Exception ex)
             {
                 ShowError($"Save failed: {ex.Message}");
+                SaveAsButton.IsEnabled = true; 
             }
         }
 
