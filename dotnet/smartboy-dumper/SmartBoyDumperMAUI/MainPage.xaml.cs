@@ -183,6 +183,9 @@ namespace SmartBoyDumperMAUI
             await SaveToDownloadsAsync(_lastResultPath);
         }
 
+        private global::Android.Net.Uri? _lastResultUri;
+
+        // In SaveToDownloadsAsync ergänzen:
         private async Task SaveToDownloadsAsync(string? sourcePath)
         {
             if (string.IsNullOrEmpty(sourcePath) || !File.Exists(sourcePath))
@@ -193,17 +196,27 @@ namespace SmartBoyDumperMAUI
             try
             {
                 var context = global::Android.App.Application.Context;
-                var displayPath = await Task.Run(() =>
+                var (displayPath, uri) = await Task.Run(() =>
                     DownloadsSaver.SaveToDownloads(context, sourcePath));
 
+                _lastResultUri = uri;
                 ResultPathLabel.Text = $"Saved to {displayPath}";
                 SaveAsButton.Text = "Saved ✓";
+                PlayButton.IsVisible = true;   // <- neuer Button erscheint erst jetzt
             }
             catch (Exception ex)
             {
                 ShowError($"Save failed: {ex.Message}");
-                SaveAsButton.IsEnabled = true; 
+                SaveAsButton.IsEnabled = true;
             }
+        }
+
+        private void PlayButton_Clicked(object sender, EventArgs e)
+        {
+            var context = global::Android.App.Application.Context;
+            var preferred = Preferences.Default.Get<string?>("preferred_emulator", null);
+
+            EmulatorLauncher.TryOpenDirectly(context, preferred);
         }
 
         private async void ShowLastCrash_Clicked(object sender, EventArgs e)

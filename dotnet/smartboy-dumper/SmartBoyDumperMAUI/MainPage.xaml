@@ -94,6 +94,10 @@
                     <Button x:Name="SaveAsButton" Text="Save to Downloads"
                             Style="{StaticResource SecondaryButtonStyle}"
                             Clicked="SaveAsButton_Clicked" />
+                    <Button x:Name="PlayButton" Text="▶ Play Now"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            IsVisible="False"
+                            Clicked="PlayButton_Clicked" />
                 </VerticalStackLayout>
             </VerticalStackLayout>
         </Border>
