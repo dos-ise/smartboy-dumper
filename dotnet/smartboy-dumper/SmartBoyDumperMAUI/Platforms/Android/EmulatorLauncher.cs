@@ -1,5 +1,4 @@
 ﻿using Android.Content;
-using Android.Content.PM;
 
 namespace SmartBoyDumperMAUI.Platforms.Android
 {
@@ -7,64 +6,30 @@ namespace SmartBoyDumperMAUI.Platforms.Android
     {
         private static readonly string[] KnownEmulators =
         {
-            "com.fastemulator.gbc",      // My OldBoy! (kostenpflichtig)
+            "com.fastemulator.gbc",      // My OldBoy! (paid)
             "com.fastemulator.gbcfree",  // My OldBoy! Free
         };
 
         public static bool TryOpenDirectly(Context context, string? preferredPackage = null)
         {
-            var pm = context.PackageManager;
+            var candidates = preferredPackage != null
+                ? new[] { preferredPackage }
+                : KnownEmulators;
 
-            // 1. Preferred Package zuerst testen
-            if (!string.IsNullOrEmpty(preferredPackage))
-            {
-                if (IsInstalled(pm, preferredPackage))
-                    return LaunchPackage(context, preferredPackage);
-            }
+            var pm = context.PackageManager!;
 
-            // 2. Alle bekannten Emulatoren testen
-            foreach (var pkg in KnownEmulators)
+            foreach (var pkg in candidates)
             {
-                if (IsInstalled(pm, pkg))
-                    return LaunchPackage(context, pkg);
+                var intent = pm.GetLaunchIntentForPackage(pkg);
+                if (intent != null)
+                {
+                    intent.AddFlags(ActivityFlags.NewTask);
+                    context.StartActivity(intent);
+                    return true;
+                }
             }
 
             return false;
-        }
-
-        private static bool IsInstalled(PackageManager pm, string packageName)
-        {
-            try
-            {
-                pm.GetPackageInfo(packageName, PackageInfoFlags.Activities);
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private static bool LaunchPackage(Context context, string packageName)
-        {
-            try
-            {
-                var pm = context.PackageManager;
-
-                // Hole den Launcher-Intent der App
-                var intent = pm.GetLaunchIntentForPackage(packageName);
-                if (intent == null)
-                    return false;
-
-                intent.AddFlags(ActivityFlags.NewTask);
-
-                context.StartActivity(intent);
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
         }
     }
 }
