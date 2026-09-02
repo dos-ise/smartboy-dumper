@@ -1,4 +1,5 @@
-﻿using Android.Content;
+﻿using Android.App;
+using Android.Content;
 using Android.Hardware.Usb;
 using CommunityToolkit.Maui.Storage;
 using SmartBoyDumperMAUI.Platforms.Android;
@@ -8,7 +9,7 @@ namespace SmartBoyDumperMAUI
     public partial class MainPage : ContentPage
     {
         private enum UiState { Idle, Running, WaitingForCartridge, CartridgeDetected, Dumping, Success, Error }
-
+        private global::Android.Net.Uri? _outputFolderUri;
         private SmartboyDumper? _dumper;
         private string? _lastResultPath;
         private UiState _state = UiState.Idle;
@@ -16,6 +17,23 @@ namespace SmartBoyDumperMAUI
         public MainPage()
         {
             InitializeComponent();
+            LoadOutputFolderPreference();
+        }
+
+        private void LoadOutputFolderPreference()
+        {
+            var saved = Preferences.Default.Get<string?>("output_folder_uri", null);
+
+            if (!string.IsNullOrEmpty(saved))
+            {
+                _outputFolderUri = global::Android.Net.Uri.Parse(saved);
+                var context = global::Android.App.Application.Context;
+                OutputFolderLabel.Text = $"Saving to: {OutputSaver.GetFolderDisplayName(context, _outputFolderUri!)}";
+            }
+            else
+            {
+                OutputFolderLabel.Text = "Saving to: Downloads";
+            }
         }
 
         private async void ActionButton_Clicked(object sender, EventArgs e)
@@ -73,7 +91,7 @@ namespace SmartBoyDumperMAUI
             _dumper.DumpCompleted += (_, path) => MainThread.BeginInvokeOnMainThread(async () =>
             {
                 SetState(UiState.Success, filePath: path);
-                await SaveToDownloadsAsync(path);
+                await SaveOutputAsync(path);
             });
 
             SetState(UiState.Running);
@@ -180,13 +198,13 @@ namespace SmartBoyDumperMAUI
 
         private async void SaveAsButton_Clicked(object sender, EventArgs e)
         {
-            await SaveToDownloadsAsync(_lastResultPath);
+            await SaveOutputAsync(_lastResultPath);
         }
 
         private global::Android.Net.Uri? _lastResultUri;
 
         // In SaveToDownloadsAsync ergänzen:
-        private async Task SaveToDownloadsAsync(string? sourcePath)
+        private async Task SaveOutputAsync(string? sourcePath)
         {
             if (string.IsNullOrEmpty(sourcePath) || !File.Exists(sourcePath))
                 return;
@@ -196,13 +214,16 @@ namespace SmartBoyDumperMAUI
             try
             {
                 var context = global::Android.App.Application.Context;
+
                 var (displayPath, uri) = await Task.Run(() =>
-                    DownloadsSaver.SaveToDownloads(context, sourcePath));
+                    _outputFolderUri != null
+                        ? OutputSaver.SaveToCustomFolder(context, sourcePath, _outputFolderUri)
+                        : OutputSaver.SaveToDownloads(context, sourcePath));
 
                 _lastResultUri = uri;
                 ResultPathLabel.Text = $"Saved to {displayPath}";
                 SaveAsButton.Text = "Saved ✓";
-                PlayButton.IsVisible = true;   // <- neuer Button erscheint erst jetzt
+                PlayButton.IsVisible = true;
             }
             catch (Exception ex)
             {
@@ -230,6 +251,23 @@ namespace SmartBoyDumperMAUI
         {
             _dumper?.Dispose();
             base.OnDisappearing();
+        }
+
+        private async void ChangeFolderButton_Clicked(object sender, EventArgs e)
+        {
+            var activity = Platform.CurrentActivity as Activity;
+            if (activity == null) return;
+
+            var uri = await FolderPickerHelper.PickFolderAsync(activity);
+            if (uri == null) return; // Nutzer hat abgebrochen
+
+            var context = global::Android.App.Application.Context;
+            context.ContentResolver!.TakePersistableUriPermission(uri,
+                ActivityFlags.GrantReadUriPermission | ActivityFlags.GrantWriteUriPermission);
+
+            _outputFolderUri = uri;
+            Preferences.Default.Set("output_folder_uri", uri.ToString());
+            OutputFolderLabel.Text = $"Saving to: {OutputSaver.GetFolderDisplayName(context, uri)}";
         }
     }
 }

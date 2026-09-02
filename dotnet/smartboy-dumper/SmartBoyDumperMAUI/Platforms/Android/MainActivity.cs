@@ -1,6 +1,8 @@
 ﻿using Android.App;
+using Android.Content;
 using Android.Content.PM;
 using Android.Hardware.Usb;
+using SmartBoyDumperMAUI.Platforms.Android;
 
 namespace SmartBoyDumperMAUI;
 
@@ -9,4 +11,9 @@ namespace SmartBoyDumperMAUI;
 [MetaData(UsbManager.ActionUsbDeviceAttached, Resource = "@xml/device_filter")]
 public class MainActivity : MauiAppCompatActivity
 {
+    protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
+    {
+        base.OnActivityResult(requestCode, resultCode, data);
+        FolderPickerHelper.HandleResult(requestCode, resultCode, data);
+    }
 }

@@ -59,6 +59,16 @@
                    TextColor="{StaticResource TextSecondary}" />
         </VerticalStackLayout>
 
+        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,2">
+            <Label x:Name="OutputFolderLabel" Text="Saving to: Downloads"
+                   FontSize="12" TextColor="{StaticResource TextSecondary}"
+                   VerticalOptions="Center" />
+            <Button Grid.Column="1" Text="Change" FontSize="12"
+                    Padding="10,4" HeightRequest="30"
+                    BackgroundColor="Transparent" TextColor="{StaticResource PrimaryColor}"
+                    Clicked="ChangeFolderButton_Clicked" />
+        </Grid>
+
         <!-- Status card: compact, everything important at a glance -->
         <Border Style="{StaticResource CardStyle}">
             <VerticalStackLayout Spacing="10">
