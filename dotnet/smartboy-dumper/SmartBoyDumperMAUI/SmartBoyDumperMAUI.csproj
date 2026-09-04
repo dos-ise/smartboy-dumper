@@ -47,8 +47,8 @@
 
 	<ItemGroup>
 		<PackageReference Include="CommunityToolkit.Maui" Version="15.0.1" />
-		<PackageReference Include="Microsoft.Maui.Controls" Version="10.0.100" />
-		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.11" />
+		<PackageReference Include="Microsoft.Maui.Controls" Version="11.0.0-preview.7.26406.9" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="11.0.0-preview.7.26381.103" />
 		<PackageReference Include="UsbSerialForAndroid" Version="2.0.1" />
 		<PackageReference Include="Xamarin.AndroidX.DocumentFile" Version="1.0.1.33" />
 	</ItemGroup>
