@@ -30,9 +30,13 @@ namespace SmartBoyDumperMAUI
                 {
                     found = device;
 
-                    _connection = manager.OpenDevice(driver.Device)
-                                  ?? throw new SmartboyException("Konnte USB-Verbindung nicht öffnen (Berechtigung fehlt?).");
+                    _connection = manager.OpenDevice(driver.Device);
 
+                    if (_connection == null)
+                    {
+                        throw new SmartboyException("Konnte USB-Verbindung nicht öffnen (Berechtigung fehlt?).");
+                    }
+                      
                     _port = driver.Ports[0];
                     _port.Open(_connection);
                     _port.SetParameters(115200, UsbSerialPort.DATABITS_8, StopBits.One, Parity.None);

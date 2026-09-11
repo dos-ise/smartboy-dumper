@@ -60,7 +60,8 @@ namespace SmartBoyDumperGUI
 
             // Console-Ausgaben der SmartboyDumper-Klasse in die TextBox umleiten
             _originalConsoleOut = Console.Out;
-            Console.SetOut(new TextBoxWriter(LogTextBox));
+            var writer = new TextBoxWriter(LogTextBox);
+            Console.SetOut(writer);
 
             bool verbose = VerboseCheckBox.Dispatcher.Invoke(() => VerboseCheckBox.IsChecked == true);
 
@@ -87,6 +88,7 @@ namespace SmartBoyDumperGUI
             }
             finally
             {
+                writer.StopAndFlush();
                 Console.SetOut(_originalConsoleOut);
                 _dumper = null;
                 _isRunning = false;

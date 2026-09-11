@@ -356,6 +356,8 @@ namespace SmartboyDumperCs
                                 Console.WriteLine("*** Cartridge einlegen");
                                 _cartReq = true;
                             }
+                            _state = InState.None;   // NEU
+                            _tagPos = 0;              // NEU
                             break;
                         default:
                             // Srm/End/StartRom außerhalb des erwarteten Moments gehören zum
