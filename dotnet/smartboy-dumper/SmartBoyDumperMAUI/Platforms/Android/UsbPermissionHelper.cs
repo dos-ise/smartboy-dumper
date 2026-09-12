@@ -3,79 +3,118 @@ using System.Threading.Tasks;
 using Android.App;
 using Android.Content;
 using Android.Hardware.Usb;
-using AndroidX.Core.Content;
+using Android.OS;
+using Anotherlab.UsbSerialForAndroid.Driver;
 
 namespace SmartBoyDumperMAUI.Platforms.Android
 {
     public static class UsbPermissionHelper
     {
-        private const string ActionUsbPermission = "com.deinefirma.smartboydumper.USB_PERMISSION";
+        private const string ActionUsbPermission = "com.dossoft.smartboydumpermaui.USB_PERMISSION";
+        private const int VendorId = 0x16D0;
+        private const int ProductId = 0x0557;
 
-        public static Task<UsbDevice?> FindAndRequestDeviceAsync(Context context)
+        private static ProbeTable BuildProbeTable()
+        {
+            var table = new ProbeTable();
+            table.AddProduct(VendorId, ProductId, typeof(CdcAcmSerialDriver));
+            return table;
+        }
+
+        /// <summary>
+        /// Sucht unter allen aktuell angeschlossenen USB-Geräten genau das,
+        /// das vom CdcAcmSerialDriver bedient werden kann (VID/PID-Match).
+        /// </summary>
+        public static UsbDevice? FindMatchingDevice(UsbManager manager)
+        {
+            var prober = new UsbSerialProber(BuildProbeTable());
+
+            foreach (var device in manager.DeviceList.Values)
+            {
+                var driver = prober.ProbeDevice(device);
+                if (driver != null)
+                    return device; // exakt das Interface, das später auch geöffnet wird
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Sucht das passende Gerät und fragt bei Bedarf die USB-Permission an.
+        /// Wartet asynchron auf die Nutzer-Antwort im Permission-Dialog.
+        /// </summary>
+        public static async Task<UsbDevice?> FindAndRequestDeviceAsync(Context context)
         {
             var manager = (UsbManager)context.GetSystemService(Context.UsbService)!;
-            var tcs = new TaskCompletionSource<UsbDevice?>();
+            var device = FindMatchingDevice(manager);
+            if (device == null)
+                return null;
 
-            UsbDevice? target = null;
-            foreach (var device in manager.DeviceList!.Values)
-            {
-                // Der Smartboy meldet sich als CDC-ACM-Interface - hier grob nach
-                // Vendor-Klasse filtern, notfalls Liste aller Geräte anzeigen lassen.
-                target = device;
-                break;
-            }
+            if (manager.HasPermission(device))
+                return device;
 
-            if (target == null)
-            {
-                tcs.SetResult(null);
-                return tcs.Task;
-            }
+            var tcs = new TaskCompletionSource<bool>();
+            UsbPermissionReceiver? receiver = null;
 
-            if (manager.HasPermission(target))
+            receiver = new UsbPermissionReceiver(grantedDevice =>
             {
-                tcs.SetResult(target);
-                return tcs.Task;
-            }
+                // Nur auf das Ergebnis für genau dieses Gerät reagieren
+                bool granted = grantedDevice != null
+                    && grantedDevice.DeviceName == device.DeviceName
+                    && manager.HasPermission(device);
 
-            var receiver = new UsbPermissionReceiver(granted =>
-            {
-                tcs.TrySetResult(granted ? target : null);
+                tcs.TrySetResult(granted);
             });
 
-            context.RegisterReceiver(receiver, new IntentFilter(ActionUsbPermission),
-                (ReceiverFlags)ContextCompat.ReceiverNotExported);
+            var filter = new IntentFilter(ActionUsbPermission);
 
-            // Expliziter Intent für Android 14+
-            var intent = new Intent(context, typeof(UsbPermissionReceiver));
-            intent.SetAction(ActionUsbPermission);
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.Tiramisu)
+                context.RegisterReceiver(receiver, filter, ReceiverFlags.NotExported);
+            else
+                context.RegisterReceiver(receiver, filter);
 
-            // Immutable statt Mutable
-            var permissionIntent = PendingIntent.GetBroadcast(
-                context,
-                0,
-                intent,
-                PendingIntentFlags.Immutable
-            );
+            try
+            {
+                var flags = Build.VERSION.SdkInt >= BuildVersionCodes.S
+                    ? PendingIntentFlags.Mutable
+                    : PendingIntentFlags.UpdateCurrent;
 
-            manager.RequestPermission(target, permissionIntent);
+                // Explizit machen (Package setzen), sonst verbietet Android 14+
+                // FLAG_MUTABLE bei impliziten Intents.
+                var intent = new Intent(ActionUsbPermission).SetPackage(context.PackageName);
 
+                var permissionIntent = PendingIntent.GetBroadcast(
+                    context, 0, intent, flags);
 
-            return tcs.Task;
+                manager.RequestPermission(device, permissionIntent);
+
+                bool granted = await tcs.Task;
+                return granted ? device : null;
+            }
+            finally
+            {
+                context.UnregisterReceiver(receiver);
+            }
         }
 
         private class UsbPermissionReceiver : BroadcastReceiver
         {
-            private readonly Action<bool> _callback;
+            private readonly Action<UsbDevice?> _onResult;
 
-            public UsbPermissionReceiver(Action<bool> callback) => _callback = callback;
+            public UsbPermissionReceiver(Action<UsbDevice?> onResult)
+            {
+                _onResult = onResult;
+            }
 
             public override void OnReceive(Context? context, Intent? intent)
             {
-                if (intent?.Action != ActionUsbPermission) return;
+                if (intent?.Action != ActionUsbPermission)
+                    return;
 
-                bool granted = intent.GetBooleanExtra(UsbManager.ExtraPermissionGranted, false);
-                _callback(granted);
-                context?.UnregisterReceiver(this);
+                bool permissionGranted = intent.GetBooleanExtra(UsbManager.ExtraPermissionGranted, false);
+                var device = (UsbDevice?)intent.GetParcelableExtra(UsbManager.ExtraDevice);
+
+                _onResult(permissionGranted ? device : null);
             }
         }
     }
