@@ -71,12 +71,9 @@ namespace SmartboyDumperCs
 
         public bool Verbose { get; set; }
 
-        /// <summary>
-        /// Wenn true, wird jedes empfangene Byte roh als Hex + ASCII auf der
-        /// Konsole ausgegeben, bevor es in die State Machine geht. Praktisch
-        /// zum Debuggen, wenn unklar ist, was das Gerät tatsächlich sendet.
-        /// </summary>
-        public bool DumpRawBytes { get; set; }
+        private StreamWriter _rawLog;
+        private long _rawLogByteCount = 0;
+
 
         /// <param name="portName">COM-Port des Smartboy-Adapters, z. B. "COM5"</param>
         /// <param name="baudRate">Baudrate der virtuellen seriellen Schnittstelle</param>
@@ -86,20 +83,25 @@ namespace SmartboyDumperCs
             {
                 ReadTimeout = 1000,
                 WriteTimeout = 1000,
-                DtrEnable = true,   // manche CDC-ACM-Geräte brauchen DTR, um Daten zu senden
+                DtrEnable = true,
                 RtsEnable = true,
-                ReadBufferSize = 65536 // großzügiger Reservepuffer gegen Überlauf
+                ReadBufferSize = 65536
             };
 
             try
             {
                 _port.Open();
+                _rawLog = new StreamWriter("smartboy_raw.log", append: false)
+                {
+                    AutoFlush = true
+                };
             }
             catch (Exception ex)
             {
                 throw new SmartboyException($"Konnte {portName} nicht öffnen: {ex.Message}");
             }
         }
+
 
         // --- Low-Level I/O -----------------------------------------------
 
@@ -123,14 +125,21 @@ namespace SmartboyDumperCs
 
             byte b = _rxBuffer.Dequeue();
 
-            if (DumpRawBytes)
+            // ASCII printable
+            char printable = (b >= 0x20 && b < 0x7F) ? (char)b : '.';
+
+            // --- NEU: Logfile schreiben ---
+            if (_rawLog != null)
             {
-                char c = (b >= 0x20 && b < 0x7F) ? (char)b : '.';
-                Console.WriteLine($"RX 0x{b:X2}  ({c})");
+                _rawLog.WriteLine(
+                    $"{_rawLogByteCount,7}  0x{b:X2}  {printable}  state={_state} tagPos={_tagPos}"
+                );
             }
+            _rawLogByteCount++;
 
             return b;
         }
+
 
         private void WriteString(string s)
         {
@@ -438,10 +447,19 @@ namespace SmartboyDumperCs
 
         public void Dispose()
         {
+            try
+            {
+                _rawLog?.Flush();
+                _rawLog?.Close();
+                _rawLog?.Dispose();
+            }
+            catch { }
+
             if (_port != null && _port.IsOpen)
                 _port.Close();
 
             _port?.Dispose();
         }
+
     }
 }
