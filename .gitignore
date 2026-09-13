@@ -1,3 +1,51 @@
-smartboy-dumper
+# --- Standard .NET ---
+bin/
+obj/
+[Bb]uild/
+[Ll]og/
+*.user
+*.suo
+*.cache
+*.pdb
+*.mdb
+
+# --- Visual Studio / Rider ---
+.vs/
+.idea/
+*.userprefs
+
+# --- MAUI / Android ---
+*.apk
+*.aab
+*.keystore
+*.jks
+*.dex
+*.class
+*.apk.idsig
+*.DS_Store
+
+# --- Android build output ---
+**/platforms/android/app/build/
+**/platforms/android/build/
+**/platforms/android/.gradle/
+**/platforms/android/.idea/
+
+# --- NuGet ---
+*.nupkg
+packages/
+.nuget/
+
+# --- SmartBoy ROM Dumps ---
 *.gb
 *.gbc
+*.bin
+
+# --- Logs ---
+*.log
+
+# --- Temporary ---
+*.tmp
+*.temp
+
+# --- Do NOT ignore C# files ---
+!*.cs

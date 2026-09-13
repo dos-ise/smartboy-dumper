@@ -244,12 +244,22 @@ namespace smartboy_dumper
                     tag = Tags[(int)_state];
                 }
 
-                if (_tagPos < tag.Length && tag[_tagPos] == (char)b)
+                // Schutz: Wenn tag kürzer ist als erwartet → sofort resetten
+                if (_tagPos < 0 || _tagPos >= tag.Length)
+                {
+                    _state = InState.None;
+                    _tagPos = 0;
+                    continue;
+                }
+
+                if (tag[_tagPos] == (char)b)
                 {
                     _tagPos++;
+
                     if (_tagPos == tag.Length)
                     {
                         _tagPos = -1;
+
                         if (_state == InState.Nr && !_cartReq)
                         {
                             CartridgeAwaited?.Invoke(this, EventArgs.Empty);
