@@ -1,49 +1,21 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.IO.Ports;
 using System.Text;
 
-namespace SmartboyDumperCs
+namespace smartboy_dumper
 {
-    public enum InState
-    {
-        None,
-        Nm,       // NAME
-        Rb,       // SIZE
-        StartRom, // ROM
-        Srm,      // SRAM
-        End,      // Ende des Dumps
-        Nr        // Kein ROM eingelegt
-    }
+    public enum InState { None, Nm, Rb, StartRom, Srm, End, Nr }
 
     public class SmartboyException : Exception
     {
         public SmartboyException(string message) : base(message) { }
     }
 
-    /// <summary>
-    /// Portierung von smartboy-dumper (Bastien Nocera, GPLv3) nach C#.
-    /// Das Original spricht das Gerät als CDC-ACM (virtueller serieller Port,
-    /// /dev/ttyACM0 unter Linux) an - hier daher SerialPort statt USB-Bulk.
-    /// </summary>
     public class SmartboyDumper : IDisposable
     {
         private const int BankSize = 16 * 1024;
 
-        // Reihenfolge/Bedeutung 1:1 aus dem Original übernommen.
         private static readonly string[] Tags =
-        {
-            "",
-            "nm",
-            "rb",
-            "startrom",
-            "srm",
-            "end",
-            "nr",
-        };
+        { "", "nm", "rb", "startrom", "srm", "end", "nr" };
 
-        // GB_MAGIC_STRING aus dem Original, als Bytes statt C-String
         private static readonly byte[] GbMagic =
         {
             0xce, 0xed, 0x66, 0x66, 0xcc, 0x0d, 0x00, 0x0b,
@@ -52,177 +24,52 @@ namespace SmartboyDumperCs
         };
         private const int GbMagicOffset = 260;
 
-        private readonly SerialPort _port;
-
-        // Byte-Ringpuffer für gepuffertes Lesen: statt jedes Byte einzeln
-        // per _port.ReadByte() zu holen (teuer, kann bei kurzen Stalls -
-        // z.B. durch Console.Write - zu Datenverlust am USB-Treiber führen),
-        // wird blockweise in _readChunk gelesen und von hier serviert.
-        private readonly Queue<byte> _rxBuffer = new Queue<byte>();
-        private readonly byte[] _readChunk = new byte[4096];
+        private readonly IByteTransport _transport;
+        private readonly string _outputDirectory;
 
         private InState _state = InState.None;
         private int _tagPos = 0;
         private bool _romReq;
         private bool _cartReq;
 
-        private string _romName;
+        private string? _romName;
         private int _nrBanks = -1;
 
-        public bool Verbose { get; set; }
+        public event EventHandler? CartridgeAwaited;
+        public event EventHandler<string>? RomNameDetected;
+        public event EventHandler<int>? RomSizeDetected;
+        public event EventHandler<int>? DumpProgressChanged;
+        public event EventHandler<string>? DumpCompleted;
 
-        private StreamWriter _rawLog;
-        private long _rawLogByteCount = 0;
-
-
-        /// <param name="portName">COM-Port des Smartboy-Adapters, z. B. "COM5"</param>
-        /// <param name="baudRate">Baudrate der virtuellen seriellen Schnittstelle</param>
-        public SmartboyDumper(string portName, int baudRate = 115200)
+        public SmartboyDumper(IByteTransport transport, string outputDirectory)
         {
-            _port = new SerialPort(portName, baudRate)
-            {
-                ReadTimeout = 1000,
-                WriteTimeout = 1000,
-                DtrEnable = true,
-                RtsEnable = true,
-                ReadBufferSize = 65536
-            };
-
-            try
-            {
-                _port.Open();
-                _rawLog = new StreamWriter("smartboy_raw.log", append: false)
-                {
-                    AutoFlush = true
-                };
-            }
-            catch (Exception ex)
-            {
-                throw new SmartboyException($"Konnte {portName} nicht öffnen: {ex.Message}");
-            }
+            _transport = transport;
+            _outputDirectory = outputDirectory;
+            Directory.CreateDirectory(_outputDirectory);
         }
-
 
         // --- Low-Level I/O -----------------------------------------------
 
-        private byte ReadByte()
-        {
-            while (_rxBuffer.Count == 0)
-            {
-                int bytesRead;
-                try
-                {
-                    bytesRead = _port.Read(_readChunk, 0, _readChunk.Length);
-                }
-                catch (TimeoutException)
-                {
-                    continue;
-                }
+        private byte ReadByte() => _transport.ReadByte();
 
-                for (int i = 0; i < bytesRead; i++)
-                    _rxBuffer.Enqueue(_readChunk[i]);
-            }
+        private void WriteString(string s) =>
+            _transport.WriteBytes(Encoding.ASCII.GetBytes(s));
 
-            byte b = _rxBuffer.Dequeue();
-
-            // ASCII printable
-            char printable = (b >= 0x20 && b < 0x7F) ? (char)b : '.';
-
-            // --- NEU: Logfile schreiben ---
-            if (_rawLog != null)
-            {
-                _rawLog.WriteLine(
-                    $"{_rawLogByteCount,7}  0x{b:X2}  {printable}  state={_state} tagPos={_tagPos}"
-                );
-            }
-            _rawLogByteCount++;
-
-            return b;
-        }
-
-
-        private void WriteString(string s)
-        {
-            try
-            {
-                var bytes = Encoding.ASCII.GetBytes(s);
-                _port.Write(bytes, 0, bytes.Length);
-            }
-            catch (Exception ex)
-            {
-                throw new SmartboyException($"Schreibfehler: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Reine Diagnosefunktion: liest fortlaufend Rohbytes vom Port und
-        /// gibt sie als Hex-Dump aus, ohne die State Machine zu durchlaufen.
-        /// Mit Strg+C oder Prozessabbruch beenden.
-        /// </summary>
-        public void DumpRawStream()
-        {
-            Console.WriteLine("*** Roh-Debug-Modus: gebe alle empfangenen Bytes als Hex-Dump aus");
-            Console.WriteLine("*** (Strg+C zum Beenden)");
-            Console.WriteLine();
-
-            var lineBuf = new List<byte>();
-            int column = 0;
-
-            while (true)
-            {
-                byte b = ReadByte();
-
-                lineBuf.Add(b);
-                Console.Write($"{b:X2} ");
-                column++;
-
-                if (column == 16)
-                {
-                    PrintAsciiTail(lineBuf);
-                    lineBuf.Clear();
-                    column = 0;
-                }
-            }
-        }
-
-        private static void PrintAsciiTail(List<byte> bytes)
-        {
-            Console.Write(" | ");
-            foreach (var b in bytes)
-            {
-                char c = (b >= 0x20 && b < 0x7F) ? (char)b : '.';
-                Console.Write(c);
-            }
-            Console.WriteLine();
-        }
-
-        // --- Tag-Erkennung (entspricht suffix_get_tag / prefix_get_tag) --
+        // --- Tag-Erkennung -------------------------------------------------
 
         private static InState SuffixGetTag(string str)
         {
-            if (string.IsNullOrEmpty(str))
-                return InState.None;
-
+            if (string.IsNullOrEmpty(str)) return InState.None;
             for (int i = 1; i < Tags.Length; i++)
-            {
-                if (str.EndsWith(Tags[i], StringComparison.Ordinal))
-                    return (InState)i;
-            }
-
+                if (str.EndsWith(Tags[i], StringComparison.Ordinal)) return (InState)i;
             return InState.None;
         }
 
         private static InState PrefixGetTag(string str)
         {
-            if (string.IsNullOrEmpty(str))
-                return InState.None;
-
+            if (string.IsNullOrEmpty(str)) return InState.None;
             for (int i = 1; i < Tags.Length; i++)
-            {
-                if (str.StartsWith(Tags[i], StringComparison.Ordinal))
-                    return (InState)i;
-            }
-
+                if (str.StartsWith(Tags[i], StringComparison.Ordinal)) return (InState)i;
             return InState.None;
         }
 
@@ -231,7 +78,6 @@ namespace SmartboyDumperCs
             InState state;
             while ((state = SuffixGetTag(sb.ToString())) == InState.None)
                 sb.Append((char)ReadByte());
-
             return state;
         }
 
@@ -244,11 +90,8 @@ namespace SmartboyDumperCs
             {
                 sb.Length -= Tags[(int)state].Length;
                 _romName = sb.ToString();
-                Console.WriteLine($"*** ROM-Name erkannt: {_romName}");
+                RomNameDetected?.Invoke(this, _romName);
             }
-
-            if (Verbose)
-                Console.WriteLine($"Neuer Zustand nach Name: {Tags[(int)state]}");
 
             return state;
         }
@@ -262,23 +105,18 @@ namespace SmartboyDumperCs
             {
                 var sizeStr = sb.ToString();
                 int digits = 0;
-                while (digits < sizeStr.Length && char.IsDigit(sizeStr[digits]))
-                    digits++;
+                while (digits < sizeStr.Length && char.IsDigit(sizeStr[digits])) digits++;
 
                 _nrBanks = digits > 0 ? int.Parse(sizeStr.Substring(0, digits)) : 0;
-                Console.WriteLine(
-                    $"*** ROM-Größe erkannt: {_nrBanks * BankSize} Bytes ({_nrBanks} x {BankSize / 1024}kB)");
+                RomSizeDetected?.Invoke(this, _nrBanks * BankSize);
             }
-
-            if (Verbose)
-                Console.WriteLine($"Neuer Zustand nach ROM-Bänken: {Tags[(int)state]}");
 
             return state;
         }
 
         // --- ROM-Dump ------------------------------------------------------
 
-        private static string CreateFilename(string romName, byte[] buf)
+        private static string? CreateFilename(string romName, byte[] buf)
         {
             if (buf.Length < GbMagicOffset + GbMagic.Length)
                 return null;
@@ -286,49 +124,42 @@ namespace SmartboyDumperCs
             bool isGbc = false;
             for (int i = 0; i < GbMagic.Length; i++)
             {
-                if (buf[GbMagicOffset + i] != GbMagic[i])
-                {
-                    isGbc = true;
-                    break;
-                }
+                if (buf[GbMagicOffset + i] != GbMagic[i]) { isGbc = true; break; }
             }
 
-            return isGbc ? $"{romName}.gbc" : $"{romName}.gb";
+            var safeName = string.Join("_", romName.Trim().Split(Path.GetInvalidFileNameChars()));
+            return isGbc ? $"{safeName}.gbc" : $"{safeName}.gb";
         }
 
         private void DumpRom()
         {
             int romSize = _nrBanks * BankSize;
-            Console.WriteLine("*** Starte ROM-Dump");
-            Console.Write("***  00%");
-
             var buf = new byte[romSize];
+            int lastReportedPercent = -1;
+
             for (int offset = 0; offset < romSize; offset++)
             {
                 buf[offset] = ReadByte();
 
-                if (offset % 1024 == 0 || offset == romSize - 1)
-                    Console.Write($"\b\b\b{(offset + 1) * 100 / romSize:D2}%");
+                int percent = (offset + 1) * 100 / romSize;
+                if (percent != lastReportedPercent)
+                {
+                    lastReportedPercent = percent;
+                    DumpProgressChanged?.Invoke(this, percent);
+                }
             }
 
-            Console.WriteLine("\b\b\b100%");
+            var filename = CreateFilename(_romName!, buf) ?? $"{_romName}.bin";
+            var fullPath = Path.Combine(_outputDirectory, filename);
+            File.WriteAllBytes(fullPath, buf);
 
-            var filename = CreateFilename(_romName, buf) ?? $"{_romName}.bin";
-            Console.WriteLine($"*** Speichere '{filename}'");
-            File.WriteAllBytes(filename, buf);
-            Console.WriteLine($"*** '{filename}' geschrieben");
+            DumpCompleted?.Invoke(this, fullPath);
         }
 
-        // --- Hauptschleife (entspricht fd_watch) ---------------------------
+        // --- Hauptschleife ---------------------------------------------
 
-        /// <summary>
-        /// Blockierende Hauptschleife. Läuft bis ein ROM erfolgreich
-        /// gedumpt wurde oder ein Fehler auftritt.
-        /// </summary>
         public void Run()
         {
-            Console.WriteLine("*** Warte auf Cartridge / Smartboy-Daten");
-
             while (true)
             {
                 if (_nrBanks > 0 && _romName != null &&
@@ -342,7 +173,6 @@ namespace SmartboyDumperCs
                 {
                     _romReq = true;
                     WriteString("sd");
-                    Console.WriteLine("*** Fordere ROM an");
                     continue;
                 }
 
@@ -369,12 +199,6 @@ namespace SmartboyDumperCs
                             _tagPos = 0;              // NEU
                             break;
                         default:
-                            // Srm/End/StartRom außerhalb des erwarteten Moments gehören zum
-                            // autonomen Chatter des Geräts oder treten auf, weil wir mitten
-                            // im laufenden Zyklus mitlesen - einfach ignorieren und auf den
-                            // nächsten bekannten Tag warten, statt abzustürzen.
-                            if (Verbose)
-                                Console.WriteLine($"Zustand {Tags[(int)_state]} außerhalb des erwarteten Ablaufs ignoriert");
                             _state = InState.None;
                             _tagPos = 0;
                             break;
@@ -393,13 +217,10 @@ namespace SmartboyDumperCs
                         if (b == (byte)Tags[i][0])
                         {
                             _state = (InState)i;
-                            _tagPos = 1;   // erstes Zeichen wurde bereits erkannt
-                            if (Verbose)
-                                Console.WriteLine($"Möglicher neuer Zustand {Tags[i]}");
+                            _tagPos = 1;
                             break;
                         }
                     }
-
                     continue;
                 }
 
@@ -419,8 +240,6 @@ namespace SmartboyDumperCs
                 var newPossibleState = PrefixGetTag(partial);
                 if (newPossibleState != InState.None && newPossibleState != _state)
                 {
-                    if (Verbose)
-                        Console.WriteLine($"Neuer möglicher Zustand {Tags[(int)newPossibleState]}, war {tag}");
                     _state = newPossibleState;
                     tag = Tags[(int)_state];
                 }
@@ -430,13 +249,10 @@ namespace SmartboyDumperCs
                     _tagPos++;
                     if (_tagPos == tag.Length)
                     {
-                        if (Verbose)
-                            Console.WriteLine($"Zustand {tag} vollständig");
                         _tagPos = -1;
-
                         if (_state == InState.Nr && !_cartReq)
                         {
-                            Console.WriteLine("*** Cartridge einlegen");
+                            CartridgeAwaited?.Invoke(this, EventArgs.Empty);
                             _cartReq = true;
                         }
                         else
@@ -447,29 +263,12 @@ namespace SmartboyDumperCs
                 }
                 else
                 {
-                    if (Verbose)
-                        Console.WriteLine($"Alter Zustand {tag} verworfen, setze zurück");
                     _state = InState.None;
                     _tagPos = 0;
                 }
             }
         }
 
-        public void Dispose()
-        {
-            try
-            {
-                _rawLog?.Flush();
-                _rawLog?.Close();
-                _rawLog?.Dispose();
-            }
-            catch { }
-
-            if (_port != null && _port.IsOpen)
-                _port.Close();
-
-            _port?.Dispose();
-        }
-
+        public void Dispose() => _transport.Dispose();
     }
 }

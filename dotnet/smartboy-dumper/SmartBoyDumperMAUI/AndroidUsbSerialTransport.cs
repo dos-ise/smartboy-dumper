@@ -1,7 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using Android.Hardware.Usb;
+﻿using Android.Hardware.Usb;
 using Anotherlab.UsbSerialForAndroid.Driver;
+using smartboy_dumper;
 
 namespace SmartBoyDumperMAUI
 {

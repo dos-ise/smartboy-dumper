@@ -4,7 +4,7 @@ using System.IO.Ports;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
-using SmartboyDumperCs;
+using smartboy_dumper;
 
 namespace SmartBoyDumperGUI
 {
@@ -63,14 +63,38 @@ namespace SmartBoyDumperGUI
             var writer = new TextBoxWriter(LogTextBox);
             Console.SetOut(writer);
 
-            bool verbose = VerboseCheckBox.Dispatcher.Invoke(() => VerboseCheckBox.IsChecked == true);
-
             try
             {
                 await Task.Run(() =>
                 {
-                    using var dumper = new SmartboyDumper(portName) { Verbose = verbose };
+                    // Transport erzeugen
+                    using var transport = new SerialPortByteTransport(portName);
+
+                    // Output-Verzeichnis festlegen
+                    string outputDir = Path.Combine(
+                        AppDomain.CurrentDomain.BaseDirectory, "dumps");
+
+                    // Dumper erzeugen
+                    using var dumper = new SmartboyDumper(transport, outputDir);
                     _dumper = dumper;
+
+                    // Events abonnieren
+                    dumper.RomNameDetected += (_, name) =>
+                        Console.WriteLine($"ROM-Name: {name}");
+
+                    dumper.RomSizeDetected += (_, size) =>
+                        Console.WriteLine($"ROM-Größe: {size} Bytes");
+
+                    dumper.DumpProgressChanged += (_, percent) =>
+                        Console.WriteLine($"Dump: {percent}%");
+
+                    dumper.DumpCompleted += (_, file) =>
+                        Console.WriteLine($"Dump abgeschlossen: {file}");
+
+                    dumper.CartridgeAwaited += (_, __) =>
+                        Console.WriteLine("Bitte Cartridge einlegen!");
+
+                    // Starten
                     dumper.Run();
                 });
 
@@ -98,6 +122,7 @@ namespace SmartBoyDumperGUI
                 RefreshButton.IsEnabled = true;
             }
         }
+
 
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {

@@ -11,5 +11,7 @@
 	<ItemGroup>
 	  <ProjectReference Include="..\smartboy-dumper\smartboy-dumper.csproj" />
 	</ItemGroup>
-
+	<ItemGroup>
+		<PackageReference Include="System.IO.Ports" Version="10.0.11" />
+	</ItemGroup>
 </Project>

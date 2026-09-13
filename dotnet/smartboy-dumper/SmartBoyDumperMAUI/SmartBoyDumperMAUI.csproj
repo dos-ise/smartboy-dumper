@@ -53,4 +53,8 @@
 		<PackageReference Include="Xamarin.AndroidX.DocumentFile" Version="1.0.1.33" />
 	</ItemGroup>
 
+	<ItemGroup>
+	  <ProjectReference Include="..\smartboy-dumper\smartboy-dumper.csproj" />
+	</ItemGroup>
+
 </Project>

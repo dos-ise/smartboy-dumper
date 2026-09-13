@@ -2,6 +2,7 @@
 using Android.Content;
 using Android.Hardware.Usb;
 using CommunityToolkit.Maui.Storage;
+using smartboy_dumper;
 using SmartBoyDumperMAUI.Platforms.Android;
 
 namespace SmartBoyDumperMAUI
