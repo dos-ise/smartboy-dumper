@@ -1,4 +1,5 @@
-﻿using Android.Hardware.Usb;
+﻿using System.Diagnostics;
+using Android.Hardware.Usb;
 using Anotherlab.UsbSerialForAndroid.Driver;
 using smartboy_dumper;
 
@@ -6,6 +7,8 @@ public class AndroidUsbSerialTransport : IByteTransport
 {
     private readonly UsbDeviceConnection _connection;
     private readonly UsbSerialPort _port;
+    private readonly Queue<byte> _rx = new();
+    private readonly byte[] _chunk = new byte[64]; // CDC-ACM Paketgröße
 
     public AndroidUsbSerialTransport(UsbManager manager, UsbDevice device)
     {
@@ -28,14 +31,18 @@ public class AndroidUsbSerialTransport : IByteTransport
 
     public byte ReadByte()
     {
-        var buf = new byte[1];
-
-        while (true)
+        while (_rx.Count == 0)
         {
-            int n = _port.Read(buf, 1000);
-            if (n == 1)
-                return buf[0];
+            int n = _port.Read(_chunk, 1000);
+
+            for (int i = 0; i < n; i++)
+            {
+                Debug.WriteLine("READ: " + _chunk[i].ToString("X2"));
+                _rx.Enqueue(_chunk[i]);
+            }
         }
+
+        return _rx.Dequeue();
     }
 
     public void WriteBytes(byte[] data)
