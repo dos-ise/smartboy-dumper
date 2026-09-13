@@ -228,7 +228,17 @@ namespace SmartBoyDumperMAUI
                 }
 
                 var tag = Tags[(int)_state];
-                var partial = tag.Substring(0, Math.Min(_tagPos, tag.Length)) + (char)b;
+                string partial;
+
+                if (_tagPos < 1 || _tagPos > tag.Length)
+                {
+                    partial = ((char)b).ToString();
+                }
+                else
+                {
+                    partial = tag.Substring(0, _tagPos) + (char)b;
+                }
+
 
                 var newPossibleState = PrefixGetTag(partial);
                 if (newPossibleState != InState.None && newPossibleState != _state)
