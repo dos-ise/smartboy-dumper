@@ -10,6 +10,12 @@ public class AndroidUsbSerialTransport : IByteTransport
     private readonly Queue<byte> _rx = new();
     private readonly byte[] _chunk = new byte[64]; // CDC-ACM Paketgröße
 
+    // Wie bei der Desktop-Variante: das Board resettet vermutlich über
+    // DTR/RTS beim Verbindungsaufbau und braucht danach eine kurze
+    // Boot-/Reinit-Zeit, bevor es das Cartridge sauber scannt und die
+    // Handshake-Sequenz ("vsnm...startrom") sendet.
+    private const int PostResetSettleMs = 2000;
+
     public AndroidUsbSerialTransport(UsbManager manager, UsbDevice device)
     {
         var table = new ProbeTable();
@@ -27,6 +33,26 @@ public class AndroidUsbSerialTransport : IByteTransport
         _port.SetParameters(115200, UsbSerialPort.DATABITS_8, StopBits.One, Parity.None);
         _port.SetDTR(true);
         _port.SetRTS(true);
+
+        Thread.Sleep(PostResetSettleMs);
+        DiscardBootGarbage();
+    }
+
+    // Liest mit kurzen Timeouts leer, bis nichts mehr kommt - Ersatz für
+    // SerialPort.DiscardInBuffer(), das es hier nicht gibt.
+    private void DiscardBootGarbage()
+    {
+        int discarded = 0;
+        while (true)
+        {
+            int n = _port.Read(_chunk, 50);
+            if (n <= 0)
+                break;
+            discarded += n;
+        }
+
+        if (discarded > 0)
+            Debug.WriteLine($"=== {discarded} Byte(s) Boot-Müll verworfen ===");
     }
 
     public byte ReadByte()

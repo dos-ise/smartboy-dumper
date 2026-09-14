@@ -1,4 +1,5 @@
 using System.Text;
+using System.Collections.Generic;
 
 namespace smartboy_dumper
 {
@@ -29,6 +30,10 @@ namespace smartboy_dumper
 
         private InState _state = InState.None;
         private int _tagPos = 0;
+        private string _pending = string.Empty;
+        private int _bytesSinceLastTag = 0;
+        private bool _syncLostReported = false;
+        private const int SyncLostThreshold = 2048; // Bytes ohne vollständigen Tag-Match
         private bool _romReq;
         private bool _cartReq;
 
@@ -40,6 +45,11 @@ namespace smartboy_dumper
         public event EventHandler<int>? RomSizeDetected;
         public event EventHandler<int>? DumpProgressChanged;
         public event EventHandler<string>? DumpCompleted;
+        // Feuert einmalig, wenn über SyncLostThreshold Bytes hinweg kein
+        // einziger Tag vollständig erkannt wurde - typischerweise, weil die
+        // initiale "vsnm...startrom"-Ankündigung verpasst wurde (z.B. weil
+        // das Cartridge schon vor dem Öffnen des Ports gesteckt hat).
+        public event EventHandler? SyncLost;
 
         public SmartboyDumper(IByteTransport transport, string outputDirectory)
         {
@@ -65,12 +75,19 @@ namespace smartboy_dumper
             return InState.None;
         }
 
-        private static InState PrefixGetTag(string str)
+        // Liefert alle Tags, zu denen "pending" noch werden könnte
+        // (d.h. Tags[i] beginnt mit "pending"). Ersetzt das alte,
+        // fehlerhafte PrefixGetTag (das fälschlich str.StartsWith(tag)
+        // statt tag.StartsWith(str) prüfte und daher bei kurzen,
+        // gerade erst begonnenen Präfixen nie traf).
+        private static List<InState> TagsStartingWith(string pending)
         {
-            if (string.IsNullOrEmpty(str)) return InState.None;
+            var result = new List<InState>();
             for (int i = 1; i < Tags.Length; i++)
-                if (str.StartsWith(Tags[i], StringComparison.Ordinal)) return (InState)i;
-            return InState.None;
+                if (Tags[i].Length >= pending.Length &&
+                    string.CompareOrdinal(Tags[i], 0, pending, 0, pending.Length) == 0)
+                    result.Add((InState)i);
+            return result;
         }
 
         private InState ReadUntilNewState(StringBuilder sb)
@@ -186,6 +203,16 @@ namespace smartboy_dumper
                         case InState.Rb:
                             _state = ReadSizeUntilNewState();
                             break;
+                        case InState.StartRom:
+                            // "startrom" wurde erkannt, aber Name/Größe fehlen noch
+                            // (z.B. weil nm/rb aus Sync-Gründen nicht sauber ankamen).
+                            // NICHT einfach stillschweigend resetten (sonst werden
+                            // anschließend ROM-Bytes fälschlich als Tag-Zeichen
+                            // interpretiert) - stattdessen sichtbar machen und warten.
+                            Console.WriteLine("*** 'startrom' ohne bekannten Namen/Größe empfangen - ignoriere Tag");
+                            _state = InState.None;
+                            _tagPos = 0;
+                            break;
                         case InState.Nr:
                             _romName = null;
                             _nrBanks = -1;
@@ -209,71 +236,71 @@ namespace smartboy_dumper
                 }
 
                 byte b = ReadByte();
+                _bytesSinceLastTag++;
 
-                if (_state == InState.None)
+                if (!_syncLostReported && _bytesSinceLastTag > SyncLostThreshold)
                 {
-                    for (int i = 1; i < Tags.Length; i++)
-                    {
-                        if (b == (byte)Tags[i][0])
-                        {
-                            _state = (InState)i;
-                            _tagPos = 1;
-                            break;
-                        }
-                    }
-                    continue;
+                    _syncLostReported = true;
+                    Console.WriteLine($"*** Kein gültiger Tag seit {_bytesSinceLastTag} Bytes - " +
+                                       "Handshake vermutlich verpasst. Cartridge neu einlegen / Port neu öffnen.");
+                    SyncLost?.Invoke(this, EventArgs.Empty);
                 }
 
-                var tag = Tags[(int)_state];
-                string partial;
+                // Versuchen, das Byte an den bisher gesammelten Tag-Anfang
+                // ("_pending") anzuhängen.
+                string extended = _pending + (char)b;
+                var candidates = TagsStartingWith(extended);
 
-                if (_tagPos < 1 || _tagPos > tag.Length)
+                if (candidates.Count == 0)
                 {
-                    partial = ((char)b).ToString();
+                    // Fehlschlag: "_pending + b" passt zu keinem Tag mehr.
+                    // WICHTIG (das war der eigentliche Bug): das aktuelle Byte
+                    // wird NICHT verworfen, sondern sofort erneut als möglicher
+                    // Beginn eines NEUEN Tags geprüft. So geht z.B. das 'n' von
+                    // "nm" nicht mehr verloren, nur weil davor ein unbekanntes
+                    // oder zu einem anderen Tag ("startrom"/"srm") gehörendes
+                    // Präfix wie "vs" im Datenstrom stand.
+                    _pending = string.Empty;
+                    candidates = TagsStartingWith(((char)b).ToString());
+                    extended = candidates.Count > 0 ? ((char)b).ToString() : string.Empty;
                 }
-                else
-                {
-                    partial = tag.Substring(0, _tagPos) + (char)b;
-                }
 
+                _pending = extended;
 
-                var newPossibleState = PrefixGetTag(partial);
-                if (newPossibleState != InState.None && newPossibleState != _state)
+                if (candidates.Count == 0)
                 {
-                    _state = newPossibleState;
-                    tag = Tags[(int)_state];
-                }
-
-                // Schutz: Wenn tag kürzer ist als erwartet → sofort resetten
-                if (_tagPos < 0 || _tagPos >= tag.Length)
-                {
+                    // Byte gehört zu keinem bekannten Tag (z.B. Steuerzeichen) -
+                    // hier ist Verwerfen tatsächlich korrekt.
                     _state = InState.None;
                     _tagPos = 0;
                     continue;
                 }
 
-                if (tag[_tagPos] == (char)b)
+                // Eindeutig vollständiges Tag erkannt (Länge passt exakt)?
+                var exact = candidates.Find(c => Tags[(int)c].Length == _pending.Length);
+                if (exact != InState.None)
                 {
-                    _tagPos++;
+                    _state = exact;
+                    _pending = string.Empty;
+                    _tagPos = -1;
+                    _bytesSinceLastTag = 0;
+                    _syncLostReported = false;
 
-                    if (_tagPos == tag.Length)
+                    if (_state == InState.Nr && !_cartReq)
                     {
-                        _tagPos = -1;
-
-                        if (_state == InState.Nr && !_cartReq)
-                        {
-                            CartridgeAwaited?.Invoke(this, EventArgs.Empty);
-                            _cartReq = true;
-                        }
-                        else
-                        {
-                            _cartReq = false;
-                        }
+                        CartridgeAwaited?.Invoke(this, EventArgs.Empty);
+                        _cartReq = true;
+                    }
+                    else
+                    {
+                        _cartReq = false;
                     }
                 }
                 else
                 {
-                    _state = InState.None;
+                    // Noch nicht eindeutig (z.B. "n" könnte "nm" oder "nr" werden,
+                    // "s" könnte "startrom" oder "srm" werden) - weiter sammeln.
+                    _state = candidates.Count == 1 ? candidates[0] : InState.None;
                     _tagPos = 0;
                 }
             }
