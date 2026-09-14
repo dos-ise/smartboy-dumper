@@ -8,7 +8,7 @@ public class AndroidUsbSerialTransport : IByteTransport
     private readonly UsbDeviceConnection _connection;
     private readonly UsbSerialPort _port;
     private readonly Queue<byte> _rx = new();
-    private readonly byte[] _chunk = new byte[64]; // CDC-ACM Paketgröße
+    private readonly byte[] _chunk = new byte[4096];
 
     // Wie bei der Desktop-Variante: das Board resettet vermutlich über
     // DTR/RTS beim Verbindungsaufbau und braucht danach eine kurze
@@ -63,7 +63,6 @@ public class AndroidUsbSerialTransport : IByteTransport
 
             for (int i = 0; i < n; i++)
             {
-                Debug.WriteLine("READ: " + _chunk[i].ToString("X2"));
                 _rx.Enqueue(_chunk[i]);
             }
         }
