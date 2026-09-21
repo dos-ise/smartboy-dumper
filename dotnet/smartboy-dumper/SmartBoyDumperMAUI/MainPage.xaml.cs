@@ -12,6 +12,11 @@ namespace SmartBoyDumperMAUI
         private enum UiState { Idle, Running, WaitingForCartridge, CartridgeDetected, Dumping, Success, Error }
         private global::Android.Net.Uri? _outputFolderUri;
         private SmartboyDumper? _dumper;
+        // Separates Feld für den Transport (nicht nur lokal in
+        // ActionButton_Clicked), damit der Cancel-Button ihn erreichen
+        // und den laufenden Lese-Loop kooperativ abbrechen kann, statt
+        // direkt Dispose() auf dem UI-Thread aufzurufen.
+        private AndroidUsbSerialTransport? _transport;
         private string? _lastResultPath;
         private UiState _state = UiState.Idle;
 
@@ -42,9 +47,20 @@ namespace SmartBoyDumperMAUI
             if (_state is UiState.Running or UiState.WaitingForCartridge or
                 UiState.CartridgeDetected or UiState.Dumping)
             {
-                _dumper?.Dispose();
+                // WICHTIG: nicht direkt Dispose() auf dem UI-Thread aufrufen.
+                // Wenn die USB-Verbindung gerade hakt, kann ein noch offener
+                // Bulk-Transfer im Hintergrund-Thread stecken, und Close()
+                // dann darauf warten - das würde den UI-Thread einfrieren
+                // (ANR). Stattdessen erst kooperativ abbrechen lassen
+                // (Read-Schleife beendet sich selbst binnen ~1s) und das
+                // eigentliche Dispose() auf einem Hintergrund-Thread machen.
+                _transport?.Cancel();
+                var dumperToDispose = _dumper;
                 _dumper = null;
+                _transport = null;
                 SetState(UiState.Idle);
+
+                await Task.Run(() => dumperToDispose?.Dispose());
                 return;
             }
 
@@ -63,7 +79,7 @@ namespace SmartBoyDumperMAUI
 
             var manager = (UsbManager)context.GetSystemService(Context.UsbService)!;
 
-            IByteTransport transport;
+            AndroidUsbSerialTransport transport;
             try
             {
                 transport = new AndroidUsbSerialTransport(manager, device);
@@ -73,6 +89,8 @@ namespace SmartBoyDumperMAUI
                 ShowError(ex.Message);
                 return;
             }
+
+            _transport = transport;
 
             var outputDir = Path.Combine(FileSystem.Current.AppDataDirectory, "Dumps");
             _dumper = new SmartboyDumper(transport, outputDir);
@@ -100,6 +118,11 @@ namespace SmartBoyDumperMAUI
             try
             {
                 await Task.Run(() => _dumper!.Run());
+            }
+            catch (OperationCanceledException)
+            {
+                // Nutzer hat selbst über den Cancel-Button abgebrochen -
+                // kein Fehlerdialog nötig, State wurde dort schon gesetzt.
             }
             catch (SmartboyException ex)
             {
@@ -173,6 +196,7 @@ namespace SmartBoyDumperMAUI
                     ActionButton.BackgroundColor = (Color)Resources["PrimaryColor"];
                     _dumper?.Dispose();
                     _dumper = null;
+                    _transport = null;
                     break;
 
                 case UiState.Error:
@@ -180,6 +204,7 @@ namespace SmartBoyDumperMAUI
                     ActionButton.BackgroundColor = (Color)Resources["PrimaryColor"];
                     _dumper?.Dispose();
                     _dumper = null;
+                    _transport = null;
                     break;
             }
         }
@@ -250,7 +275,13 @@ namespace SmartBoyDumperMAUI
 
         protected override void OnDisappearing()
         {
-            _dumper?.Dispose();
+            // Gleiches Prinzip wie beim Cancel-Button: erst kooperativ
+            // abbrechen, dann erst (im Hintergrund) entsorgen.
+            _transport?.Cancel();
+            var dumperToDispose = _dumper;
+            _dumper = null;
+            _transport = null;
+            Task.Run(() => dumperToDispose?.Dispose());
             base.OnDisappearing();
         }
 

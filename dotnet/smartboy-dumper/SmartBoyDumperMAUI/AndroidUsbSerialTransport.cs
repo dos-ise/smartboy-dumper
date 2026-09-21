@@ -7,13 +7,24 @@ public class AndroidUsbSerialTransport : IByteTransport
 {
     private readonly UsbDeviceConnection _connection;
     private readonly UsbSerialPort _port;
-    private readonly Queue<byte> _rx = new();
-    private readonly byte[] _chunk = new byte[4096];
+    private readonly byte[] _chunk = new byte[64]; // CDC-ACM Paketgröße
 
-    // Wie bei der Desktop-Variante: das Board resettet vermutlich über
-    // DTR/RTS beim Verbindungsaufbau und braucht danach eine kurze
-    // Boot-/Reinit-Zeit, bevor es das Cartridge sauber scannt und die
-    // Handshake-Sequenz ("vsnm...startrom") sendet.
+    private byte[] _buffer = Array.Empty<byte>();
+    private int _bufferPos;
+
+    // Kooperatives Abbruch-Flag: Cancel() setzt es, ReadByte() prüft es
+    // zwischen den (max. 1s langen) Lese-Versuchen und gibt dann sauber
+    // auf, BEVOR Dispose() die Verbindung schließt. Damit vermeiden wir,
+    // dass Close() auf einen noch offenen Bulk-Transfer wartet und den
+    // aufrufenden Thread (im schlimmsten Fall den UI-Thread) blockiert.
+    private volatile bool _cancelled;
+
+    // Wenn über mehrere Sekunden gar keine Antwort kommt, ist die
+    // Verbindung vermutlich tot - dann lieber einen klaren Fehler werfen
+    // statt endlos weiter zu pollen (fühlt sich sonst wie ein Freeze an).
+    private int _consecutiveTimeouts;
+    private const int MaxConsecutiveTimeouts = 5; // 5 x 1000ms ≈ 5s ohne Antwort
+
     private const int PostResetSettleMs = 2000;
 
     public AndroidUsbSerialTransport(UsbManager manager, UsbDevice device)
@@ -38,8 +49,11 @@ public class AndroidUsbSerialTransport : IByteTransport
         DiscardBootGarbage();
     }
 
-    // Liest mit kurzen Timeouts leer, bis nichts mehr kommt - Ersatz für
-    // SerialPort.DiscardInBuffer(), das es hier nicht gibt.
+    // Signalisiert der laufenden ReadByte()-Schleife, sich selbst zu
+    // beenden. Vor Dispose() aufrufen, NICHT direkt Dispose() aus dem
+    // UI-Thread heraus während ein Dump läuft.
+    public void Cancel() => _cancelled = true;
+
     private void DiscardBootGarbage()
     {
         int discarded = 0;
@@ -57,17 +71,41 @@ public class AndroidUsbSerialTransport : IByteTransport
 
     public byte ReadByte()
     {
-        while (_rx.Count == 0)
+        while (_bufferPos >= _buffer.Length)
         {
-            int n = _port.Read(_chunk, 1000);
+            if (_cancelled)
+                throw new OperationCanceledException("USB-Transfer abgebrochen.");
 
-            for (int i = 0; i < n; i++)
+            int n;
+            try
             {
-                _rx.Enqueue(_chunk[i]);
+                n = _port.Read(_chunk, 1000);
             }
+            catch (Java.Lang.Exception ex)
+            {
+                // usb-serial-for-android wirft bei Verbindungsabbruch
+                // (Kabel raus, Adapter hängt) oft eine native Exception
+                // statt nur zu timeouten - explizit als SmartboyException
+                // weiterreichen, statt den Rohfehler durchsickern zu lassen.
+                throw new SmartboyException($"USB-Verbindung verloren: {ex.Message}");
+            }
+
+            if (n <= 0)
+            {
+                _consecutiveTimeouts++;
+                if (_consecutiveTimeouts >= MaxConsecutiveTimeouts)
+                    throw new SmartboyException(
+                        "Keine Antwort vom USB-Adapter seit mehreren Sekunden - Verbindung verloren?");
+                continue;
+            }
+            _consecutiveTimeouts = 0;
+
+            _buffer = new byte[n];
+            Array.Copy(_chunk, _buffer, n);
+            _bufferPos = 0;
         }
 
-        return _rx.Dequeue();
+        return _buffer[_bufferPos++];
     }
 
     public void WriteBytes(byte[] data)
@@ -77,6 +115,7 @@ public class AndroidUsbSerialTransport : IByteTransport
 
     public void Dispose()
     {
+        _cancelled = true;
         try { _port?.Close(); } catch { }
         try { _connection?.Close(); } catch { }
     }

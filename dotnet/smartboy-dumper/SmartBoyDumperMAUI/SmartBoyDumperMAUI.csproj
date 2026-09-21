@@ -11,8 +11,8 @@
 		<ApplicationTitle>SmartBoy Companion</ApplicationTitle>
 		<ApplicationId>com.dossoft.smartboydumpermaui</ApplicationId>
 
-		<ApplicationDisplayVersion>1.0.2</ApplicationDisplayVersion>
-		<ApplicationVersion>3</ApplicationVersion>
+		<ApplicationDisplayVersion>1.0.3</ApplicationDisplayVersion>
+		<ApplicationVersion>4</ApplicationVersion>
 
 		<WindowsPackageType>None</WindowsPackageType>
 
@@ -47,10 +47,10 @@
 
 	<ItemGroup>
 		<PackageReference Include="CommunityToolkit.Maui" Version="15.0.1" />
-		<PackageReference Include="Microsoft.Maui.Controls" Version="11.0.0-preview.7.26406.9" />
-		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="11.0.0-preview.7.26381.103" />
+		<PackageReference Include="Microsoft.Maui.Controls" Version="11.0.0-rc.1.26451.6" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="11.0.0-rc.1.26425.128" />
 		<PackageReference Include="UsbSerialForAndroid" Version="2.0.1" />
-		<PackageReference Include="Xamarin.AndroidX.DocumentFile" Version="1.0.1.33" />
+		<PackageReference Include="Xamarin.AndroidX.DocumentFile" Version="1.1.0.4" />
 	</ItemGroup>
 
 	<ItemGroup>

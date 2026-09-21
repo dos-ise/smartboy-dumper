@@ -28,7 +28,7 @@ public class SerialPortByteTransport : IByteTransport, IDisposable
 
         _port.Open();
 
-        _log = new StreamWriter("smartboy_serial.log", append: true, Encoding.UTF8)
+        _log = new StreamWriter("smartboy_serial.log", append: false, Encoding.UTF8)
         {
             AutoFlush = true
         };
