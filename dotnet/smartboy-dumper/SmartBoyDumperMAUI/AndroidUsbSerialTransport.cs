@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Android.Hardware.Usb;
 using Anotherlab.UsbSerialForAndroid.Driver;
 using smartboy_dumper;
@@ -34,10 +34,10 @@ public class AndroidUsbSerialTransport : IByteTransport
 
         var prober = new UsbSerialProber(table);
         var driver = prober.ProbeDevice(device)
-                     ?? throw new SmartboyException("Kein passender Seriell-Treiber gefunden.");
+                     ?? throw new SmartboyException("No matching serial driver found.");
 
         _connection = manager.OpenDevice(driver.Device)
-                      ?? throw new SmartboyException("Konnte USB-Verbindung nicht öffnen.");
+                      ?? throw new SmartboyException("Could not open USB connection.");
 
         _port = driver.Ports[0];
         _port.Open(_connection);
@@ -66,7 +66,7 @@ public class AndroidUsbSerialTransport : IByteTransport
         }
 
         if (discarded > 0)
-            Debug.WriteLine($"=== {discarded} Byte(s) Boot-Müll verworfen ===");
+            Debug.WriteLine($"=== {discarded} byte(s) of boot garbage discarded ===");
     }
 
     public byte ReadByte()
@@ -74,7 +74,7 @@ public class AndroidUsbSerialTransport : IByteTransport
         while (_bufferPos >= _buffer.Length)
         {
             if (_cancelled)
-                throw new OperationCanceledException("USB-Transfer abgebrochen.");
+                throw new OperationCanceledException("USB transfer cancelled.");
 
             int n;
             try
@@ -87,7 +87,7 @@ public class AndroidUsbSerialTransport : IByteTransport
                 // (Kabel raus, Adapter hängt) oft eine native Exception
                 // statt nur zu timeouten - explizit als SmartboyException
                 // weiterreichen, statt den Rohfehler durchsickern zu lassen.
-                throw new SmartboyException($"USB-Verbindung verloren: {ex.Message}");
+                throw new SmartboyException($"USB connection lost: {ex.Message}");
             }
 
             if (n <= 0)
@@ -95,11 +95,10 @@ public class AndroidUsbSerialTransport : IByteTransport
                 _consecutiveTimeouts++;
                 if (_consecutiveTimeouts >= MaxConsecutiveTimeouts)
                     throw new SmartboyException(
-                        "Keine Antwort vom USB-Adapter seit mehreren Sekunden - Verbindung verloren?");
+                        "No response from the USB adapter for several seconds - connection lost?");
                 continue;
             }
             _consecutiveTimeouts = 0;
-
             _buffer = new byte[n];
             Array.Copy(_chunk, _buffer, n);
             _bufferPos = 0;

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.IO.Ports;
 using System.Linq;
@@ -45,13 +45,13 @@ namespace SmartBoyDumperGUI
 
             if (PortComboBox.SelectedItem is not string portName)
             {
-                MessageBox.Show("Bitte einen COM-Port auswählen.", "Kein Port gewählt",
+                MessageBox.Show("Please select a COM port.", "No port selected",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
             LogTextBox.Clear();
-            StatusText.Text = "Läuft...";
+            StatusText.Text = "Running...";
             StartButton.IsEnabled = false;
             PortComboBox.IsEnabled = false;
             RefreshButton.IsEnabled = false;
@@ -80,35 +80,39 @@ namespace SmartBoyDumperGUI
 
                     // Events abonnieren
                     dumper.RomNameDetected += (_, name) =>
-                        Console.WriteLine($"ROM-Name: {name}");
+                        Console.WriteLine($"ROM name: {name}");
 
                     dumper.RomSizeDetected += (_, size) =>
-                        Console.WriteLine($"ROM-Größe: {size} Bytes");
+                        Console.WriteLine($"ROM size: {size} bytes");
 
                     dumper.DumpProgressChanged += (_, percent) =>
                         Console.WriteLine($"Dump: {percent}%");
 
                     dumper.DumpCompleted += (_, file) =>
-                        Console.WriteLine($"Dump abgeschlossen: {file}");
+                        Console.WriteLine($"Dump completed: {file}");
+
+                    dumper.LogMessage += (_, msg) => Console.WriteLine(msg);
+                    dumper.SaveCompleted += (_, file) =>
+                        Console.WriteLine($"Save game saved: {file}");
 
                     dumper.CartridgeAwaited += (_, __) =>
-                        Console.WriteLine("Bitte Cartridge einlegen!");
+                        Console.WriteLine("Please insert a cartridge!");
 
                     // Starten
                     dumper.Run();
                 });
 
-                StatusText.Text = "Fertig - ROM gespeichert.";
+                StatusText.Text = "Done - ROM saved.";
             }
             catch (SmartboyException ex)
             {
-                StatusText.Text = "Fehler.";
-                Console.WriteLine($"Fehler: {ex.Message}");
+                StatusText.Text = "Error.";
+                Console.WriteLine($"Error: {ex.Message}");
             }
             catch (Exception ex)
             {
-                StatusText.Text = "Unerwarteter Fehler.";
-                Console.WriteLine($"Unerwarteter Fehler: {ex}");
+                StatusText.Text = "Unexpected error.";
+                Console.WriteLine($"Unerwarteter Error: {ex}");
             }
             finally
             {

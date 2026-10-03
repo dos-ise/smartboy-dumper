@@ -45,11 +45,20 @@ namespace smartboy_dumper
         public event EventHandler<int>? RomSizeDetected;
         public event EventHandler<int>? DumpProgressChanged;
         public event EventHandler<string>? DumpCompleted;
+        // Feuert, sobald der Spielstand (SRAM) als .sav geschrieben wurde -
+        // noch vor DumpCompleted, das den Abschluss des gesamten Dumps meldet.
+        public event EventHandler<string>? SaveCompleted;
         // Feuert einmalig, wenn über SyncLostThreshold Bytes hinweg kein
         // einziger Tag vollständig erkannt wurde - typischerweise, weil die
         // initiale "vsnm...startrom"-Ankündigung verpasst wurde (z.B. weil
         // das Cartridge schon vor dem Öffnen des Ports gesteckt hat).
         public event EventHandler? SyncLost;
+
+        // Diagnose-Ausgabe (Zustandswechsel, Größen, Fehler); die UI hängt sich hier ein.
+        public event EventHandler<string>? LogMessage;
+
+        private void Log(string message) =>
+            LogMessage?.Invoke(this, $"{DateTime.Now:HH:mm:ss.fff} {message}");
 
         public SmartboyDumper(IByteTransport transport, string outputDirectory)
         {
@@ -107,6 +116,7 @@ namespace smartboy_dumper
             {
                 sb.Length -= Tags[(int)state].Length;
                 _romName = sb.ToString();
+                Log($"ROM name detected: '{_romName}' (terminating tag: {Tags[(int)state]}, {sb.Length} chars, hex: {Convert.ToHexString(Encoding.ASCII.GetBytes(_romName))})");
                 RomNameDetected?.Invoke(this, _romName);
             }
 
@@ -125,6 +135,7 @@ namespace smartboy_dumper
                 while (digits < sizeStr.Length && char.IsDigit(sizeStr[digits])) digits++;
 
                 _nrBanks = digits > 0 ? int.Parse(sizeStr.Substring(0, digits)) : 0;
+                Log($"ROM size detected: '{sizeStr}' -> {_nrBanks} banks = {_nrBanks * BankSize} bytes");
                 RomSizeDetected?.Invoke(this, _nrBanks * BankSize);
             }
 
@@ -170,7 +181,70 @@ namespace smartboy_dumper
             var fullPath = Path.Combine(_outputDirectory, filename);
             File.WriteAllBytes(fullPath, buf);
 
+            var savePath = Path.ChangeExtension(fullPath, ".sav");
+            if (File.Exists(savePath)) File.Delete(savePath);
+
+            int sramSize = GetSramSize(buf);
+            if (sramSize > 0)
+                DumpSram(savePath, sramSize);
+
             DumpCompleted?.Invoke(this, fullPath);
+        }
+
+        private const int HeaderCartType = 0x147;
+        private const int HeaderRamSize = 0x149;
+        private const int MaxSrmTagSearch = 256;
+
+        private static readonly byte[] BatteryCartTypes =
+            { 0x03, 0x06, 0x09, 0x0D, 0x0F, 0x10, 0x13, 0x1B, 0x1E, 0x22, 0xFF };
+
+        // Größe des batteriegepufferten SRAM laut Cartridge-Header (0 = kein Savegame).
+        private static int GetSramSize(byte[] rom)
+        {
+            if (rom.Length <= HeaderRamSize) return 0;
+
+            byte type = rom[HeaderCartType];
+            if (Array.IndexOf(BatteryCartTypes, type) < 0) return 0;
+
+            if (type == 0x06) return 512; // MBC2: 512x4 Bit intern
+
+            return rom[HeaderRamSize] switch
+            {
+                1 => 2 * 1024,
+                2 => 8 * 1024,
+                3 => 32 * 1024,
+                4 => 128 * 1024,
+                5 => 64 * 1024,
+                _ => 0
+            };
+        }
+
+        // Nach den ROM-Daten folgen "end" (evtl. "vs") und dann "srm" + SRAM-Daten + "end".
+        // Die SRAM-Länge ist aus dem Header bekannt, da "end" auch in Binärdaten vorkommen kann.
+        private void DumpSram(string savePath, int size)
+        {
+            var window = new StringBuilder();
+            bool found = false;
+            for (int i = 0; i < MaxSrmTagSearch && !found; i++)
+            {
+                window.Append((char)ReadByte());
+                found = window.ToString().EndsWith("srm", StringComparison.Ordinal);
+            }
+
+            if (!found)
+            {
+                Log("No \"srm\" tag received after the ROM - save game skipped");
+                return;
+            }
+
+            Log($"srm tag found after {window.Length} bytes (preceding: {Convert.ToHexString(Encoding.ASCII.GetBytes(window.ToString()))})");
+            var sram = new byte[size];
+            for (int i = 0; i < size; i++)
+                sram[i] = ReadByte();
+
+            File.WriteAllBytes(savePath, sram);
+            Log($"Save game written: {savePath} ({size} bytes)");
+            SaveCompleted?.Invoke(this, savePath);
         }
 
         // --- Hauptschleife ---------------------------------------------
@@ -209,7 +283,7 @@ namespace smartboy_dumper
                             // NICHT einfach stillschweigend resetten (sonst werden
                             // anschließend ROM-Bytes fälschlich als Tag-Zeichen
                             // interpretiert) - stattdessen sichtbar machen und warten.
-                            Console.WriteLine("*** 'startrom' ohne bekannten Namen/Größe empfangen - ignoriere Tag");
+                            Log("'startrom' received without known name/size - ignoring tag");
                             _state = InState.None;
                             _tagPos = 0;
                             break;
@@ -219,7 +293,7 @@ namespace smartboy_dumper
                             _romReq = false;
                             if (!_cartReq)
                             {
-                                Console.WriteLine("*** Cartridge einlegen");
+                                Log("Insert cartridge");
                                 _cartReq = true;
                             }
                             _state = InState.None;   // NEU
@@ -241,8 +315,8 @@ namespace smartboy_dumper
                 if (!_syncLostReported && _bytesSinceLastTag > SyncLostThreshold)
                 {
                     _syncLostReported = true;
-                    Console.WriteLine($"*** Kein gültiger Tag seit {_bytesSinceLastTag} Bytes - " +
-                                       "Handshake vermutlich verpasst. Cartridge neu einlegen / Port neu öffnen.");
+                    Log($"No valid tag for {_bytesSinceLastTag} bytes - " +
+                                       "handshake probably missed. Re-insert the cartridge / reopen the port.");
                     SyncLost?.Invoke(this, EventArgs.Empty);
                 }
 

@@ -1,4 +1,4 @@
-﻿using smartboy_dumper;
+using smartboy_dumper;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Ports;
@@ -40,7 +40,7 @@ public class SerialPortByteTransport : IByteTransport, IDisposable
 
         int discarded = _port.BytesToRead;
         if (discarded > 0)
-            _log.WriteLine($"=== {discarded} Byte(s) Boot-Müll verworfen ===");
+            _log.WriteLine($"=== {discarded} byte(s) of boot garbage discarded ===");
 
         _port.DiscardInBuffer();
     }

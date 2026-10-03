@@ -1,4 +1,4 @@
-﻿using Android.App;
+using Android.App;
 using Android.Content;
 using Android.Hardware.Usb;
 using CommunityToolkit.Maui.Storage;
@@ -94,6 +94,8 @@ namespace SmartBoyDumperMAUI
 
             var outputDir = Path.Combine(FileSystem.Current.AppDataDirectory, "Dumps");
             _dumper = new SmartboyDumper(transport, outputDir);
+
+            _dumper.LogMessage += (_, msg) => global::Android.Util.Log.Info("SmartboyDumper", msg);
 
             _dumper.CartridgeAwaited += (_, __) => MainThread.BeginInvokeOnMainThread(() =>
                 SetState(UiState.WaitingForCartridge));
@@ -245,6 +247,16 @@ namespace SmartBoyDumperMAUI
                     _outputFolderUri != null
                         ? OutputSaver.SaveToCustomFolder(context, sourcePath, _outputFolderUri)
                         : OutputSaver.SaveToDownloads(context, sourcePath));
+
+                var savePath = Path.ChangeExtension(sourcePath, ".sav");
+                if (File.Exists(savePath))
+                {
+                    var (saveDisplay, _) = await Task.Run(() =>
+                        _outputFolderUri != null
+                            ? OutputSaver.SaveToCustomFolder(context, savePath, _outputFolderUri)
+                            : OutputSaver.SaveToDownloads(context, savePath));
+                    displayPath = $"{displayPath} + {Path.GetFileName(saveDisplay)}";
+                }
 
                 _lastResultUri = uri;
                 ResultPathLabel.Text = $"Saved to {displayPath}";

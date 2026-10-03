@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using Android.Content;
 using Android.OS;
@@ -23,7 +23,7 @@ namespace SmartBoyDumperMAUI.Platforms.Android
 
             var collection = MediaStore.Downloads.GetContentUri(MediaStore.VolumeExternal)!;
             var itemUri = resolver.Insert(collection, values)
-                ?? throw new IOException("Konnte Eintrag in Downloads nicht anlegen.");
+                ?? throw new IOException("Could not create entry in Downloads.");
 
             using (var output = resolver.OpenOutputStream(itemUri))
             using (var input = File.OpenRead(sourcePath))
@@ -41,13 +41,13 @@ namespace SmartBoyDumperMAUI.Platforms.Android
             var fileName = Path.GetFileName(sourcePath);
 
             var dir = DocumentFile.FromTreeUri(context, treeUri)
-                ?? throw new IOException("Ordner ist nicht mehr zugänglich. Bitte erneut auswählen.");
+                ?? throw new IOException("Folder is no longer accessible. Please select it again.");
 
             // Vorhandene Datei mit gleichem Namen ersetzen
             dir.FindFile(fileName)?.Delete();
 
             var newFile = dir.CreateFile(mimeType, fileName)
-                ?? throw new IOException("Konnte Datei im gewählten Ordner nicht anlegen.");
+                ?? throw new IOException("Could not create file in the selected folder.");
 
             using (var output = context.ContentResolver!.OpenOutputStream(newFile.Uri))
             using (var input = File.OpenRead(sourcePath))
