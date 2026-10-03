@@ -45,8 +45,6 @@ public class AndroidUsbSerialTransport : IByteTransport
         _port.SetDTR(true);
         _port.SetRTS(true);
 
-        Thread.Sleep(PostResetSettleMs);
-        DiscardBootGarbage();
     }
 
     // Signalisiert der laufenden ReadByte()-Schleife, sich selbst zu

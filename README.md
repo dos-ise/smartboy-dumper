@@ -60,7 +60,7 @@ data end with `end`, sometimes followed by `vs`. If the cartridge contains a sup
 `srm` will appear after the end of the ROM data, followed by the SRAM content, before `end`
 is finally shown.
 
-The .NET dumper (`dotnet/`) reads the SRAM after the ROM and writes it next to the ROM as `<name>.sav`. The SRAM length is not announced by the device; it is derived from the cartridge header (cartridge type at 0x147, RAM size at 0x149) because `end` may also occur in binary data. Cartridges without battery-backed RAM produce only the ROM. (Status: implemented, not yet verified on hardware.)
+The .NET dumper (`dotnet/`) reads the SRAM after the ROM and writes it next to the ROM as `<name>.sav`. The SRAM length is not announced by the device; it is derived from the cartridge header (cartridge type at 0x147, RAM size at 0x149) because `end` may also occur in binary data. Cartridges without battery-backed RAM produce only the ROM. (Verified on hardware with Conker's Pocket Tales: 2 MB ROM + 8 KB `.sav`, announced by an `srm` tag.)
 
 `nr` will appear continuously if no game pak is inserted.
 
