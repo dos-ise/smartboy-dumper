@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text;
 using System.Collections.Generic;
 
@@ -115,6 +116,11 @@ namespace smartboy_dumper
             if (_romName == null)
             {
                 sb.Length -= Tags[(int)state].Length;
+                if (state != InState.Rb || !IsPlausibleName(sb.ToString()))
+                {
+                    Log($"Ignoring implausible ROM name ({sb.Length} chars) - device is probably mid-stream, waiting for a new announcement");
+                    return state;
+                }
                 _romName = sb.ToString();
                 Log($"ROM name detected: '{_romName}' (terminating tag: {Tags[(int)state]}, {sb.Length} chars, hex: {Convert.ToHexString(Encoding.ASCII.GetBytes(_romName))})");
                 RomNameDetected?.Invoke(this, _romName);
@@ -123,6 +129,13 @@ namespace smartboy_dumper
             return state;
         }
 
+        private static bool IsPlausibleName(string name) =>
+            name.Length <= 24 && name.All(c => c >= 0x20 && c < 0x7F);
+
+        private static bool IsPlausibleBanks(string s) =>
+            s.Length is > 0 and <= 3 && s.All(char.IsAsciiDigit) &&
+            int.TryParse(s, out int n) && n >= 2 && n <= 512 && (n & (n - 1)) == 0;
+
         private InState ReadSizeUntilNewState()
         {
             var sb = new StringBuilder();
@@ -130,7 +143,14 @@ namespace smartboy_dumper
 
             if (_nrBanks == -1)
             {
+                sb.Length -= Tags[(int)state].Length;
                 var sizeStr = sb.ToString();
+                if (state != InState.StartRom || !IsPlausibleBanks(sizeStr))
+                {
+                    Log($"Ignoring implausible ROM size ({sizeStr.Length} chars) - waiting for a new announcement");
+                    _romName = null;
+                    return state;
+                }
                 int digits = 0;
                 while (digits < sizeStr.Length && char.IsDigit(sizeStr[digits])) digits++;
 

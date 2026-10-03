@@ -95,7 +95,7 @@ public class AndroidUsbSerialTransport : IByteTransport
                 _consecutiveTimeouts++;
                 if (_consecutiveTimeouts >= MaxConsecutiveTimeouts)
                     throw new SmartboyException(
-                        "No response from the USB adapter for several seconds - connection lost?");
+                        "No response from the USB adapter. Unplug and replug the adapter, then try again.");
                 continue;
             }
             _consecutiveTimeouts = 0;
